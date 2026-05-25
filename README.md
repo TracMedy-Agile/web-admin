@@ -1,6 +1,6 @@
-# TracMedy Web Admin (Hospital Dashboard)
+# TracMedy Admin Panel
 
-Hospital administration dashboard built with **Next.js** — the operational command center for monitoring post-discharge patients, managing care episodes, and surfacing AI-driven clinical insights.
+Internal administration panel built with **Next.js** — the centralized system for managing hospitals, user accounts, platform configuration, waitlist data, and system-wide oversight across the entire TracMedy ecosystem.
 
 ## Tech Stack
 
@@ -19,15 +19,12 @@ npm run dev
 
 ## Features
 
-- Real-time patient monitoring dashboard
-- Care episode management
-- Risk scoring & alerts
-- Recovery trend visualization
-- Clinician review workflow
-- Patient insights (biometrics, symptoms, media)
-- AI-powered recovery trajectory analysis
-- Reports & analytics
-- Team management
+- Hospital & facility management
+- User & role administration
+- Waitlist management & CSV export
+- Platform configuration
+- Audit log viewer
+- System monitoring & analytics
 
 ## Project Structure
 
