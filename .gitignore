@@ -44,3 +44,7 @@ AGENTS.md
 CLAUDE.md
 .AGENTS.md
 .CLAUDE.md
+
+# agent tooling and internal docs
+/.agents/
+/docs/
