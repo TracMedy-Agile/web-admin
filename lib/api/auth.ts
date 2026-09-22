@@ -188,3 +188,13 @@ export async function resetAdminPassword(token: string, newPassword: string): Pr
 export async function logoutAdmin(): Promise<void> {
   await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
 }
+
+export async function logoutAllAdmin(): Promise<ApiResult<MessageResponse>> {
+  return requestJson<MessageResponse>(
+    "/api/auth/logout-all",
+    {
+      method: "POST",
+    },
+    "Unable to revoke active sessions.",
+  );
+}

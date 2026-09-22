@@ -1,13 +1,67 @@
-export default function DashboardPage() {
-  return (
-    <main className="px-6 py-7 lg:px-8">
-      <section className="admin-panel-shadow rounded-[10px] border border-admin-border bg-white px-6 py-8">
-        <p className="text-[15px] font-semibold uppercase tracking-normal text-admin-muted">Tracmedy Admin</p>
-        <h2 className="mt-3 text-[32px] font-bold tracking-normal text-admin-ink">Dashboard</h2>
-        <p className="mt-4 max-w-2xl text-[16px] leading-7 text-admin-muted">
-          Authentication is active. The dashboard modules are waiting on the next admin design phase.
-        </p>
-      </section>
-    </main>
-  );
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { BuildingIcon, CardIcon, HeartPulseIcon, UsersIcon } from "@/components/admin/AdminIcons";
+import { getAdminFacilityDetail, getAdminOverview, getAdminSessionToken, type AdminOverview, type SummaryCard } from "@/lib/server/admin-overview";
+
+type SearchParams = { range?: string; metric?: string };
+type Props = { searchParams: Promise<SearchParams> };
+
+const ranges = [{ key: "today", label: "Today" }, { key: "7d", label: "7 days" }, { key: "30d", label: "30 days" }, { key: "90d", label: "90 days" }];
+
+function formatCount(value: number): string {
+  return new Intl.NumberFormat("en-NG").format(value);
+}
+function formatPercent(value: number | null | undefined): string {
+  return value === null || value === undefined ? "--" : (value > 0 ? "+" : "") + value + "%";
+}
+function labelValue(value: string): string {
+  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+function formatTimestamp(value: string): string {
+  if (!value) return "--";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" });
+}
+function statusTone(status: string): string {
+  if (status === "active" || status === "available") return "bg-admin-green-soft text-admin-success";
+  if (status === "degraded") return "bg-admin-yellow-soft text-admin-warning";
+  if (status === "inactive" || status === "not_configured" || status === "monitoring_inactive") return "bg-admin-neutral-soft text-admin-muted";
+  return "bg-admin-blue-soft text-admin-blue";
+}
+function SummaryCardView({ title, card, icon, tone }: { title: string; card: SummaryCard; icon: React.ReactNode; tone: string }) {
+  return <article className="rounded-[8px] border border-admin-border bg-white px-5 py-5 admin-panel-shadow"><div className={["grid h-11 w-11 place-items-center rounded-[10px]", tone].join(" ")}>{icon}</div><div className="mt-5 flex items-end justify-between gap-4"><div><p className="text-[13px] font-semibold text-admin-muted">{title}</p><p className="mt-2 text-[28px] font-bold tracking-normal text-admin-ink">{formatCount(card.value)}</p></div>{card.status ? <span className={["rounded-full px-2 py-1 text-[10px] font-bold uppercase", statusTone(card.status)].join(" ")}>{labelValue(card.status)}</span> : card.trendPercent !== null ? <span className="rounded-full bg-admin-green-soft px-2.5 py-1 text-[12px] font-bold text-admin-success">{formatPercent(card.trendPercent)}</span> : null}</div>{card.deltaLabel ? <p className="mt-2 text-[12px] text-admin-muted">{labelValue(card.deltaLabel)}</p> : null}</article>;
+}
+function EmptyState({ reason }: { reason: string | null }) {
+  return <section className="grid min-h-[460px] place-items-center rounded-[10px] border border-admin-border bg-white px-6 text-center admin-panel-shadow"><div><div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-admin-blue-soft"><HeartPulseIcon className="h-8 w-8 text-admin-blue" /></div><h2 className="mt-5 text-[24px] font-bold text-admin-ink">Your dashboard is ready</h2><p className="mx-auto mt-3 max-w-md text-[14px] leading-6 text-admin-muted">{reason ?? "Live platform activity will appear here once data is available."}</p><Link href="/users" className="mt-6 inline-flex rounded-[8px] bg-admin-blue px-5 py-3 text-[14px] font-bold text-white">View users</Link></div></section>;
+}
+function ActivityChart({ overview }: { overview: AdminOverview }) {
+  const points = overview.activitySeries.points;
+  const max = Math.max(...points.map((point) => point.users), 1);
+  return <section className="rounded-[10px] border border-admin-border bg-white px-5 py-5 admin-panel-shadow"><div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><h2 className="text-[18px] font-bold text-admin-ink">Platform activity</h2><p className="mt-1 text-[13px] text-admin-muted">{labelValue(overview.activitySeries.metric)} over the selected period</p></div><div className="flex items-center gap-4 text-[12px] font-semibold text-admin-muted"><span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-admin-blue" />Users</span><span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-admin-green" />Facilities</span></div></div>{points.length ? <div className="mt-7 flex h-52 items-end gap-1 border-b border-l border-admin-border px-2 pb-0 sm:gap-2">{points.map((point) => <div key={point.label} className="group flex min-w-0 flex-1 items-end gap-0.5" title={point.label + ": " + point.users + " users, " + point.facilities + " facilities"}><div className="w-1/2 rounded-t-[3px] bg-admin-blue/80" style={{ height: Math.max((point.users / max) * 100, point.users ? 4 : 0) + "%" }} /><div className="w-1/2 rounded-t-[3px] bg-admin-green/80" style={{ height: Math.max((point.facilities / max) * 100, point.facilities ? 4 : 0) + "%" }} /></div>)}</div> : <div className="grid h-52 place-items-center text-[14px] text-admin-muted">No activity data available.</div>}<div className="mt-3 flex justify-between gap-2 overflow-hidden text-[11px] text-admin-muted">{points.filter((_, index) => index === 0 || index === points.length - 1 || index % Math.max(Math.floor(points.length / 4), 1) === 0).map((point) => <span key={point.label}>{point.label}</span>)}</div></section>;
+}
+function Distribution({ overview }: { overview: AdminOverview }) {
+  return <section className="rounded-[10px] border border-admin-border bg-white px-5 py-5 admin-panel-shadow"><div><h2 className="text-[18px] font-bold text-admin-ink">User distribution</h2><p className="mt-1 text-[13px] text-admin-muted">{formatCount(overview.userDistribution.total)} users across roles</p></div><div className="mt-6 space-y-5">{overview.userDistribution.byRole.length ? overview.userDistribution.byRole.map((role) => <div key={role.key}><div className="flex items-center justify-between gap-4 text-[13px]"><span className="font-semibold text-admin-ink">{labelValue(role.key)}</span><span className="text-admin-muted">{formatCount(role.count)} ({Math.round(role.percentage)}%)</span></div><div className="mt-2 h-2 rounded-full bg-admin-neutral-soft"><div className="h-2 rounded-full bg-admin-blue" style={{ width: Math.min(role.percentage, 100) + "%" }} /></div></div>) : <p className="py-10 text-center text-[14px] text-admin-muted">No role distribution available.</p>}</div></section>;
+}
+function DashboardTable({ overview, facilityDisplayIds }: { overview: AdminOverview; facilityDisplayIds: Record<string, string> }) {
+  return <div className="grid gap-6 xl:grid-cols-2"><section className="overflow-hidden rounded-[10px] border border-admin-border bg-white admin-panel-shadow"><div className="flex items-center justify-between border-b border-admin-border px-5 py-5"><div><h2 className="text-[18px] font-bold text-admin-ink">Top facilities</h2><p className="mt-1 text-[13px] text-admin-muted">Facilities with the most active patients</p></div><Link href="/facilities" className="text-[13px] font-bold text-admin-blue">View all</Link></div>{overview.topFacilities.length ? <div className="divide-y divide-admin-border">{overview.topFacilities.map((facility) => <div key={facility.facilityId} className="flex items-center gap-4 px-5 py-4"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-admin-blue-soft text-[13px] font-bold text-admin-blue">{facility.rank}</span><div className="min-w-0 flex-1"><p className="truncate text-[14px] font-bold text-admin-ink">{facility.name}</p><p className="mt-1 truncate text-[12px] text-admin-muted">{facilityDisplayIds[facility.facilityId] ?? "--"}</p></div><div className="text-right"><p className="text-[15px] font-bold text-admin-ink">{formatCount(facility.activePatients)}</p><p className="text-[12px] text-admin-muted">active patients</p></div></div>)}</div> : <p className="px-5 py-12 text-center text-[14px] text-admin-muted">No facility data available.</p>}</section><section className="overflow-hidden rounded-[10px] border border-admin-border bg-white admin-panel-shadow"><div className="border-b border-admin-border px-5 py-5"><h2 className="text-[18px] font-bold text-admin-ink">Recent activity</h2><p className="mt-1 text-[13px] text-admin-muted">Latest platform events</p></div>{overview.recentActivity.length ? <div className="divide-y divide-admin-border">{overview.recentActivity.slice(0, 5).map((activity) => <div key={activity.id} className="px-5 py-4"><div className="flex items-start justify-between gap-4"><p className="text-[14px] font-semibold text-admin-ink">{activity.label}</p><span className={["shrink-0 rounded-full px-2 py-1 text-[10px] font-bold uppercase", statusTone(activity.severity)].join(" ")}>{activity.severity}</span></div><p className="mt-1 text-[12px] text-admin-muted">{formatTimestamp(activity.timestamp)}</p></div>)}</div> : <p className="px-5 py-12 text-center text-[14px] text-admin-muted">No recent activity available.</p>}</section></div>;
+}
+function ModuleHealth({ overview }: { overview: AdminOverview }) {
+  return <section className="rounded-[10px] border border-admin-border bg-white px-5 py-5 admin-panel-shadow"><div><h2 className="text-[18px] font-bold text-admin-ink">Module health</h2><p className="mt-1 text-[13px] text-admin-muted">Current service monitoring status</p></div><div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{overview.moduleHealth.map((module) => <div key={module.module} className="rounded-[8px] border border-admin-border px-4 py-4"><div className="flex items-center justify-between gap-3"><p className="truncate text-[13px] font-bold text-admin-ink">{module.label}</p><span className={["rounded-full px-1.5 py-1 text-[9px] font-bold uppercase", statusTone(module.status)].join(" ")}>{labelValue(module.status)}</span></div><p className="mt-3 text-[12px] text-admin-muted">Success rate: {module.successRate === null ? "--" : module.successRate + "%"}</p><p className="mt-1 text-[12px] text-admin-muted">Uptime: {module.uptimePercent === null ? "--" : module.uptimePercent + "%"}</p></div>)}</div></section>;
+}
+function DashboardView({ overview, range, metric, facilityDisplayIds }: { overview: AdminOverview; range: string; metric: string; facilityDisplayIds: Record<string, string> }) {
+  return <><div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between"><div><p className="text-[13px] font-bold uppercase text-admin-muted">Tracmedy Admin</p><h1 className="mt-2 text-[28px] font-bold text-admin-ink">Dashboard</h1><p className="mt-2 text-[15px] text-admin-muted">Monitor platform activity and operational health.</p></div><div className="flex overflow-x-auto rounded-[8px] border border-admin-border bg-white p-1">{ranges.map((item) => <Link key={item.key} href={`/dashboard?range=${item.key}&metric=${metric}`} className={["whitespace-nowrap rounded-[6px] px-3 py-2 text-[12px] font-bold", range === item.key ? "bg-admin-blue text-white" : "text-admin-muted"].join(" ")}>{item.label}</Link>)}</div></div><section className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><SummaryCardView title="Total users" card={overview.summary.totalUsers} icon={<UsersIcon className="h-5 w-5 text-admin-blue" />} tone="bg-admin-blue-soft" /><SummaryCardView title="Facilities" card={overview.summary.facilities} icon={<BuildingIcon className="h-5 w-5 text-admin-green" />} tone="bg-admin-green-soft" /><SummaryCardView title="Subscribers" card={overview.summary.subscribers} icon={<HeartPulseIcon className="h-5 w-5 text-admin-orange" />} tone="bg-admin-orange-soft" /><SummaryCardView title="Revenue this period" card={overview.summary.revenueMtd} icon={<CardIcon className="h-5 w-5 text-admin-purple" />} tone="bg-admin-purple-soft" /></section><div className="mt-7 grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(300px,1fr)]"><ActivityChart overview={overview} /><Distribution overview={overview} /></div><div className="mt-6"><DashboardTable overview={overview} facilityDisplayIds={facilityDisplayIds} /></div><div className="mt-6"><ModuleHealth overview={overview} /></div></>;
+}
+export default async function DashboardPage({ searchParams }: Props) {
+  const token = await getAdminSessionToken();
+  if (!token) redirect("/login");
+  const params = await searchParams;
+  const range = ranges.some((item) => item.key === params.range) ? params.range! : "30d";
+  const metric = params.metric === "facility_growth" ? "facility_growth" : "user_growth";
+  const overview = await getAdminOverview(token, { range, metric });
+  const facilityDisplayIds: Record<string, string> = {};
+  if (overview?.hasData) {
+    const details = await Promise.all(overview.topFacilities.map((facility) => getAdminFacilityDetail(token, facility.facilityId)));
+    overview.topFacilities.forEach((facility, index) => { facilityDisplayIds[facility.facilityId] = details[index]?.tracId ?? "--"; });
+  }
+  return <main className="px-6 py-7 lg:px-8">{overview === null ? <section className="grid min-h-[360px] place-items-center rounded-[10px] border border-admin-border bg-white px-6 text-center admin-panel-shadow"><div><h1 className="text-[24px] font-bold text-admin-ink">Dashboard unavailable</h1><p className="mt-3 max-w-md text-[14px] leading-6 text-admin-muted">The dashboard overview could not be loaded. Please try again later.</p></div></section> : !overview.hasData ? <><div className="mb-7"><p className="text-[13px] font-bold uppercase text-admin-muted">Tracmedy Admin</p><h1 className="mt-2 text-[28px] font-bold text-admin-ink">Dashboard</h1></div><EmptyState reason={overview.emptyStateReason} /></> : <DashboardView overview={overview} range={range} metric={metric} facilityDisplayIds={facilityDisplayIds} />}</main>;
 }

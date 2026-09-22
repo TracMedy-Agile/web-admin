@@ -11,20 +11,38 @@ export type SummaryCard = {
 
 export type AdminOverview = {
   hasData: boolean;
-  summary?: {
-    totalUsers?: SummaryCard;
-    subscribers?: SummaryCard;
-  };
-  userDistribution?: {
-    total: number;
-    byRole: Array<{ key: string; count: number; percentage: number }>;
-  };
+  emptyStateReason: string | null;
+  range: string | null;
+  summary: { totalUsers: SummaryCard; facilities: SummaryCard; subscribers: SummaryCard; revenueMtd: SummaryCard };
+  activitySeries: { metric: string; points: Array<{ label: string; users: number; facilities: number; revenue: number }> };
+  userDistribution: { total: number; byRole: Array<{ key: string; count: number; percentage: number }> };
+  moduleHealth: Array<{ module: string; label: string; successRate: number | null; uptimePercent: number | null; status: string; lastIncidentAt: string | null }>;
+  topFacilities: Array<{ rank: number; facilityId: string; name: string; activePatients: number; efficiencyTrendPercent: number | null }>;
+  recentActivity: Array<{ id: string; type: string; label: string; subjectId: string | null; subjectType: string | null; timestamp: string; severity: string }>;
+  adminProfile: { id: string; fullName: string; email: string; avatarUrl: string | null; initials: string; role: string; adminRole: string | null } | null;
 };
 
 export type AdminTopbarProfile = {
   fullName: string;
   initials: string;
   roleLabel: string;
+};
+
+export type AdminProfile = {
+  id: string;
+  email: string;
+  phone: string | null;
+  fullName: string;
+  avatarUrl: string | null;
+  initials: string;
+  role: string;
+  status: string;
+  timezone: string | null;
+  locale: string | null;
+  adminRole: string | null;
+  permissions: string[];
+  lastLoginAt: string | null;
+  createdAt: string | null;
 };
 
 export type AdminUsersSummary = {
@@ -179,23 +197,22 @@ function nullableStringValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
-function normalizeCard(value: unknown): SummaryCard | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
+function normalizeCard(value: unknown): SummaryCard {
+  if (!isRecord(value)) return { value: 0, trendPercent: null, deltaLabel: null, status: null, state: "available" };
+  return { value: numberValue(value.value) ?? 0, trendPercent: numberValue(value.trendPercent) ?? null, deltaLabel: stringValue(value.deltaLabel) ?? null, status: stringValue(value.status) ?? null, state: stringValue(value.state) ?? "available" };
+}
 
-  const cardValue = numberValue(value.value);
-  if (cardValue === undefined) {
-    return undefined;
-  }
-
-  return {
-    value: cardValue,
-    trendPercent: numberValue(value.trendPercent) ?? null,
-    deltaLabel: stringValue(value.deltaLabel) ?? null,
-    status: stringValue(value.status) ?? null,
-    state: stringValue(value.state) ?? null,
-  };
+function normalizeDashboardOverview(payload: Record<string, unknown>): AdminOverview {
+  const summary = isRecord(payload.summary) ? payload.summary : {};
+  const series = isRecord(payload.activitySeries) ? payload.activitySeries : {};
+  const distribution = isRecord(payload.userDistribution) ? payload.userDistribution : {};
+  const profile = isRecord(payload.adminProfile) ? payload.adminProfile : null;
+  const points = Array.isArray(series.points) ? series.points.filter(isRecord).map((point) => ({ label: stringValue(point.label) ?? "--", users: numberValue(point.users) ?? 0, facilities: numberValue(point.facilities) ?? 0, revenue: numberValue(point.revenue) ?? 0 })) : [];
+  const byRole = Array.isArray(distribution.byRole) ? distribution.byRole.filter(isRecord).map((item) => ({ key: stringValue(item.key) ?? "unknown", count: numberValue(item.count) ?? 0, percentage: numberValue(item.percentage) ?? 0 })) : [];
+  const moduleHealth = Array.isArray(payload.moduleHealth) ? payload.moduleHealth.filter(isRecord).map((item) => ({ module: stringValue(item.module) ?? "unknown", label: stringValue(item.label) ?? "Unknown module", successRate: numberValue(item.successRate) ?? null, uptimePercent: numberValue(item.uptimePercent) ?? null, status: stringValue(item.status) ?? "monitoring_inactive", lastIncidentAt: nullableStringValue(item.lastIncidentAt) })) : [];
+  const topFacilities = Array.isArray(payload.topFacilities) ? payload.topFacilities.filter(isRecord).map((item, index) => ({ rank: numberValue(item.rank) ?? index + 1, facilityId: stringValue(item.facilityId) ?? "--", name: stringValue(item.name) ?? "Unnamed facility", activePatients: numberValue(item.activePatients) ?? 0, efficiencyTrendPercent: numberValue(item.efficiencyTrendPercent) ?? null })) : [];
+  const recentActivity = Array.isArray(payload.recentActivity) ? payload.recentActivity.filter(isRecord).map((item, index) => ({ id: stringValue(item.id) ?? "activity-" + index, type: stringValue(item.type) ?? "activity", label: stringValue(item.label) ?? "Activity recorded", subjectId: nullableStringValue(item.subjectId), subjectType: nullableStringValue(item.subjectType), timestamp: stringValue(item.timestamp) ?? "", severity: stringValue(item.severity) ?? "info" })) : [];
+  return { hasData: payload.hasData === true, emptyStateReason: nullableStringValue(payload.emptyStateReason), range: nullableStringValue(payload.range), summary: { totalUsers: normalizeCard(summary.totalUsers), facilities: normalizeCard(summary.facilities), subscribers: normalizeCard(summary.subscribers), revenueMtd: normalizeCard(summary.revenueMtd) }, activitySeries: { metric: stringValue(series.metric) ?? "user_growth", points }, userDistribution: { total: numberValue(distribution.total) ?? 0, byRole }, moduleHealth, topFacilities, recentActivity, adminProfile: profile ? { id: stringValue(profile.id) ?? "", fullName: stringValue(profile.fullName) ?? "Admin", email: stringValue(profile.email) ?? "", avatarUrl: nullableStringValue(profile.avatarUrl), initials: stringValue(profile.initials) ?? "A", role: stringValue(profile.role) ?? "tracmedy_admin", adminRole: nullableStringValue(profile.adminRole) } : null };
 }
 
 export async function getAdminSessionToken(): Promise<string | null> {
@@ -217,39 +234,18 @@ async function fetchAdminJson(path: string, token: string): Promise<unknown> {
   return envelopeData(await readJson(response));
 }
 
-export async function getAdminOverview(token: string): Promise<AdminOverview | null> {
+export async function getAdminOverview(token: string, query: { range?: string; metric?: string } = {}): Promise<AdminOverview | null> {
   try {
-    const payload = await fetchAdminJson("/admin/dashboard/overview", token);
-    if (!isRecord(payload)) {
-      return null;
-    }
-
-    const summary = isRecord(payload.summary) ? payload.summary : {};
-    const distribution = isRecord(payload.userDistribution) ? payload.userDistribution : null;
-    const byRoleSource = distribution && Array.isArray(distribution.byRole) ? distribution.byRole : [];
-
-    return {
-      hasData: payload.hasData === true,
-      summary: {
-        totalUsers: normalizeCard(summary.totalUsers),
-        subscribers: normalizeCard(summary.subscribers),
-      },
-      userDistribution: distribution
-        ? {
-            total: numberValue(distribution.total) ?? 0,
-            byRole: byRoleSource.filter(isRecord).map((item) => ({
-              key: stringValue(item.key) ?? "unknown",
-              count: numberValue(item.count) ?? 0,
-              percentage: numberValue(item.percentage) ?? 0,
-            })),
-          }
-        : undefined,
-    };
+    const params = new URLSearchParams();
+    if (query.range) params.set("range", query.range);
+    if (query.metric) params.set("metric", query.metric);
+    const suffix = params.toString() ? "?" + params.toString() : "";
+    const payload = await fetchAdminJson("/admin/dashboard/overview" + suffix, token);
+    return isRecord(payload) ? normalizeDashboardOverview(payload) : null;
   } catch {
     return null;
   }
 }
-
 export async function getAdminTopbarProfile(token: string): Promise<AdminTopbarProfile | null> {
   try {
     const payload = await fetchAdminJson("/admin/me", token);
@@ -268,6 +264,19 @@ export async function getAdminTopbarProfile(token: string): Promise<AdminTopbarP
 }
 
 
+export async function getAdminProfile(token: string): Promise<AdminProfile | null> {
+  try {
+    const payload = await fetchAdminJson("/admin/me", token);
+    if (!isRecord(payload)) return null;
+    const id = stringValue(payload.id);
+    const email = stringValue(payload.email);
+    const fullName = stringValue(payload.fullName);
+    if (!id || !email || !fullName) return null;
+    return { id, email, phone: nullableStringValue(payload.phone), fullName, avatarUrl: nullableStringValue(payload.avatarUrl), initials: stringValue(payload.initials) ?? "A", role: stringValue(payload.role) ?? "tracmedy_admin", status: stringValue(payload.status) ?? "active", timezone: nullableStringValue(payload.timezone), locale: nullableStringValue(payload.locale), adminRole: nullableStringValue(payload.adminRole), permissions: stringArrayValue(payload.permissions), lastLoginAt: nullableStringValue(payload.lastLoginAt), createdAt: nullableStringValue(payload.createdAt) };
+  } catch {
+    return null;
+  }
+}
 export async function getAdminUsersSummary(token: string): Promise<AdminUsersSummary | null> {
   try {
     const payload = await fetchAdminJson("/admin/users/summary", token);

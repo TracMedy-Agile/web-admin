@@ -23,6 +23,7 @@ import {
   UsersIcon,
   WalletIcon,
 } from "@/components/admin/AdminIcons";
+import { FacilitiesRegisterBoundary } from "@/components/admin/FacilitiesRegisterBoundary";
 import { getAdminFacilitiesList, getAdminFacilitiesSummary, getAdminFacilityDetail, getAdminSessionToken, registerAdminFacility, updateAdminFacilityStatus } from "@/lib/server/admin-overview";
 
 type FacilitiesPageProps = {
@@ -833,19 +834,20 @@ export default async function FacilitiesPage({ searchParams }: FacilitiesPagePro
 
   return (
     <>
-      <FacilitiesOverviewPage
-        empty={empty}
-        facilities={facilities}
-        summary={summary ?? { total: 0, active: 0, suspended: 0, inactive: 0 }}
-        page={currentPage}
-        pageSize={pageSize}
-        totalItems={totalItems}
-        totalPages={totalPages}
-        search={params.search ?? ""}
-        status={params.status ?? ""}
-        exportUrl={facilitiesExportHref}
-      />
-      {showRegister ? <RegisterFacilityModal /> : null}
+      <FacilitiesRegisterBoundary initialOpen={showRegister} modal={<RegisterFacilityModal />}>
+        <FacilitiesOverviewPage
+          empty={empty}
+          facilities={facilities}
+          summary={summary ?? { total: 0, active: 0, suspended: 0, inactive: 0 }}
+          page={currentPage}
+          pageSize={pageSize}
+          totalItems={totalItems}
+          totalPages={totalPages}
+          search={params.search ?? ""}
+          status={params.status ?? ""}
+          exportUrl={facilitiesExportHref}
+        />
+      </FacilitiesRegisterBoundary>
       {selectedFacility ? <FacilityDetailsDrawer facility={selectedFacility} suspended={showSuspend} /> : null}
     </>
   );

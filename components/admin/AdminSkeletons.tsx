@@ -60,12 +60,11 @@ function SkeletonTable({ columns = 6, rows = 5 }: { columns?: number; rows?: num
 export function AdminDashboardSkeleton() {
   return (
     <main className="px-6 py-7 lg:px-8" aria-label="Loading dashboard">
-      <section className="admin-panel-shadow rounded-[10px] border border-admin-border bg-white px-6 py-8">
-        <SkeletonBlock className="h-4 w-36" />
-        <SkeletonBlock className="mt-4 h-9 w-48" />
-        <SkeletonBlock className="mt-5 h-4 w-full max-w-2xl" />
-        <SkeletonBlock className="mt-3 h-4 w-full max-w-xl" />
-      </section>
+      <div className="flex items-start justify-between gap-6"><div><SkeletonBlock className="h-4 w-36" /><SkeletonBlock className="mt-3 h-8 w-44" /><SkeletonBlock className="mt-3 h-4 w-72" /></div><SkeletonBlock className="h-10 w-64 rounded-[8px]" /></div>
+      <SkeletonMetricCards count={4} />
+      <div className="mt-7 grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(300px,1fr)]"><SkeletonBlock className="h-[330px] w-full rounded-[10px]" /><SkeletonBlock className="h-[330px] w-full rounded-[10px]" /></div>
+      <div className="mt-6 grid gap-6 xl:grid-cols-2"><SkeletonBlock className="h-[300px] w-full rounded-[10px]" /><SkeletonBlock className="h-[300px] w-full rounded-[10px]" /></div>
+      <SkeletonBlock className="mt-6 h-[190px] w-full rounded-[10px]" />
     </main>
   );
 }
@@ -121,6 +120,110 @@ export function AdminFacilitiesSkeleton() {
       <div className="mt-8">
         <SkeletonTable columns={6} />
       </div>
+    </main>
+  );
+}
+
+export function AdminHomeCareSkeleton() {
+  return (
+    <main className="px-6 py-7 lg:px-8" aria-label="Loading home care network">
+      <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+        <div>
+          <SkeletonBlock className="h-8 w-64" />
+          <SkeletonBlock className="mt-3 h-5 w-80" />
+        </div>
+        <SkeletonBlock className="h-12 w-28 rounded-[10px]" />
+      </div>
+      <SkeletonMetricCards />
+      <section className="mt-8 flex gap-6 border-b border-admin-border">
+        <SkeletonBlock className="h-9 w-36" />
+        <SkeletonBlock className="h-9 w-36" />
+        <SkeletonBlock className="h-9 w-28" />
+      </section>
+      <div className="mt-6">
+        <SkeletonTable columns={8} />
+      </div>
+    </main>
+  );
+}
+export function AdminClinicalMonitoringSkeleton() {
+  return (
+    <main className="px-6 py-7 lg:px-8" aria-label="Loading clinical monitoring">
+      <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+        <div>
+          <SkeletonBlock className="h-8 w-64" />
+          <SkeletonBlock className="mt-3 h-5 w-96" />
+        </div>
+        <SkeletonBlock className="h-11 w-44 rounded-[8px]" />
+      </div>
+      <section className="mt-8 flex gap-6 border-b border-admin-border">
+        <SkeletonBlock className="h-9 w-36" />
+        <SkeletonBlock className="h-9 w-36" />
+      </section>
+      <SkeletonMetricCards />
+      <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_360px]">
+        <SkeletonBlock className="h-[330px] w-full rounded-[10px]" />
+        <SkeletonBlock className="h-[330px] w-full rounded-[10px]" />
+      </div>
+      <div className="mt-6">
+        <SkeletonTable columns={4} />
+      </div>
+    </main>
+  );
+}
+
+export function AdminPaymentsSkeleton() {
+  return (
+    <main className="px-6 py-7 lg:px-8" aria-label="Loading payments">
+      <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+        <div><SkeletonBlock className="h-8 w-40" /><SkeletonBlock className="mt-3 h-5 w-80" /></div>
+        <SkeletonBlock className="h-11 w-36 rounded-[8px]" />
+      </div>
+      <SkeletonMetricCards />
+      <div className="mt-8"><SkeletonTable columns={7} rows={3} /></div>
+    </main>
+  );
+}
+
+export function AdminAiOperationsSkeleton() {
+  return (
+    <main className="px-6 py-7 lg:px-8" aria-label="Loading AI Operations">
+      <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between"><div><SkeletonBlock className="h-8 w-48" /><SkeletonBlock className="mt-3 h-5 w-80" /></div><SkeletonBlock className="h-11 w-40 rounded-[8px]" /></div>
+      <section className="mt-8 flex gap-6 border-b border-admin-border"><SkeletonBlock className="h-9 w-28" /><SkeletonBlock className="h-9 w-32" /></section>
+      <SkeletonMetricCards count={4} />
+      <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_380px]"><SkeletonBlock className="h-[330px] w-full rounded-[10px]" /><SkeletonBlock className="h-[330px] w-full rounded-[10px]" /></div>
+    </main>
+  );
+}
+
+export function AdminNotificationsSkeleton() {
+  return (
+    <main className="px-6 py-7 lg:px-8" aria-label="Loading notifications">
+      <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between"><div><SkeletonBlock className="h-8 w-52" /><SkeletonBlock className="mt-3 h-5 w-80" /></div><SkeletonBlock className="h-11 w-44 rounded-[8px]" /></div>
+      <section className="mt-8 flex gap-6 border-b border-admin-border"><SkeletonBlock className="h-9 w-44" /><SkeletonBlock className="h-9 w-40" /></section>
+      <div className="mt-7"><SkeletonBlock className="h-[520px] w-full max-w-[820px] rounded-[10px]" /></div>
+    </main>
+  );
+}
+
+export function AdminRolesPermissionsSkeleton() {
+  return (
+    <main className="px-6 py-7 lg:px-8" aria-label="Loading roles and permissions">
+      <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between"><div><SkeletonBlock className="h-8 w-64" /><SkeletonBlock className="mt-3 h-5 w-96" /></div><SkeletonBlock className="h-11 w-32 rounded-[8px]" /></div>
+      <SkeletonBlock className="mt-7 h-20 w-full rounded-[8px]" />
+      <SkeletonMetricCards count={3} />
+      <div className="mt-8"><SkeletonTable columns={5} rows={4} /></div>
+    </main>
+  );
+}
+
+export function AdminSupportSkeleton() {
+  return (
+    <main className="px-6 py-7 lg:px-8" aria-label="Loading support management">
+      <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between"><div><SkeletonBlock className="h-8 w-64" /><SkeletonBlock className="mt-3 h-5 w-96" /></div><SkeletonBlock className="h-11 w-32 rounded-[8px]" /></div>
+      <SkeletonBlock className="mt-7 h-20 w-full rounded-[8px]" />
+      <SkeletonMetricCards count={3} />
+      <div className="mt-8"><SkeletonTable columns={7} rows={4} /></div>
     </main>
   );
 }
