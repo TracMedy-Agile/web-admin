@@ -62,6 +62,10 @@ export function DownloadIcon(props: IconProps) {
   return <Icon {...props}><path d="M12 4v10M8 10l4 4 4-4M4 18.5h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></Icon>;
 }
 
+export function FilterIcon(props: IconProps) {
+  return <Icon {...props}><path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></Icon>;
+}
+
 export function ChevronDownIcon(props: IconProps) {
   return <Icon {...props}><path d="m7 9 5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></Icon>;
 }
