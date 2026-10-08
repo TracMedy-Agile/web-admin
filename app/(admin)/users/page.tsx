@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
@@ -22,7 +22,7 @@ import {
 import { getAdminOverview, getAdminSessionToken, getAdminUserDetail, getAdminUsersList, getAdminUsersSummary, updateAdminUserStatus } from "@/lib/server/admin-overview";
 
 type UsersPageProps = {
-  searchParams: Promise<{ user?: string; state?: string; page?: string; pageSize?: string; search?: string; status?: string; dateFrom?: string; dateTo?: string }>;
+  searchParams: Promise<{ user?: string; edit?: string; state?: string; page?: string; pageSize?: string; search?: string; status?: string; dateFrom?: string; dateTo?: string }>;
 };
 
 type UserRow = {
@@ -356,7 +356,12 @@ function DetailRow({ icon, label, value }: { icon: React.ReactNode; label: strin
   );
 }
 
-function UserProfileDrawer({ user }: { user: UserRow }) {
+function UserEditDrawer({ user }: { user: UserRow }) {
+  const initials = user.initials ?? user.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+  return <div className="fixed inset-0 z-50 bg-admin-overlay backdrop-blur-[3px]"><aside className="ml-auto flex h-dvh w-full max-w-[560px] flex-col bg-white shadow-2xl"><header className="flex h-[88px] items-center justify-between border-b border-admin-border px-6"><div className="flex items-center gap-4"><div className="grid h-12 w-12 place-items-center rounded-full bg-admin-blue text-[16px] font-bold text-white">{initials}</div><div><h2 className="text-[18px] font-bold text-admin-ink">{user.name}</h2><div className="mt-2 flex gap-2"><span className={["rounded-full px-3 py-1 text-[12px] font-medium", statusClass(user.status)].join(" ")}>{user.status}</span><span className="rounded-full border border-admin-blue bg-admin-blue-soft px-3 py-1 text-[12px] font-bold text-admin-blue">{user.plan}</span></div></div></div><Link href={"/users?user=" + encodeURIComponent(user.id)} aria-label="Close edit user" className="text-admin-text"><CloseIcon className="h-7 w-7" /></Link></header><div className="min-h-0 flex-1 overflow-y-auto px-8 py-8"><div className="flex items-center justify-between"><h3 className="text-[13px] font-bold uppercase tracking-[0.12em] text-admin-muted">User Information</h3><span className="inline-flex items-center gap-2 text-[13px] font-bold text-admin-blue"><EditIcon className="h-4 w-4" />Editable Fields</span></div><div className="mt-6 space-y-5"><label className="block text-[13px] font-bold text-admin-ink">Full Name<input defaultValue={user.name} readOnly className="mt-2 h-12 w-full rounded-[8px] border border-admin-border bg-white px-4 text-[14px] text-admin-ink" /></label><label className="block text-[13px] font-bold text-admin-ink">Email Address<input defaultValue={user.email} readOnly type="email" className="mt-2 h-12 w-full rounded-[8px] border border-admin-border bg-white px-4 text-[14px] text-admin-ink" /></label><label className="block text-[13px] font-bold text-admin-ink">Phone Number<input defaultValue={user.phone} readOnly type="tel" className="mt-2 h-12 w-full rounded-[8px] border border-admin-border bg-white px-4 text-[14px] text-admin-ink" /></label></div><div className="mt-8"><h3 className="text-[13px] font-bold uppercase tracking-[0.12em] text-admin-muted">User Information</h3><div className="mt-3 overflow-hidden rounded-[8px] border border-admin-border"><DetailRow icon={<IdIcon className="h-5 w-5" />} label="User ID" value={user.displayId} /><DetailRow icon={<UsersIcon className="h-5 w-5" />} label="Account Status" value={user.status} /><DetailRow icon={<CardIcon className="h-5 w-5" />} label="Subscription Plan" value={user.plan === "PLUS" ? "Tracmedy Plus" : "Tracmedy Free"} /><DetailRow icon={<CalendarIcon className="h-5 w-5" />} label="Date Joined" value={user.dateJoined} /><DetailRow icon={<CalendarIcon className="h-5 w-5" />} label="Last Login" value={user.lastActivity} /></div></div><div className="mt-6 rounded-[8px] border border-admin-yellow/30 bg-admin-yellow-soft px-4 py-3 text-[13px] leading-5 text-admin-warning">Profile editing is not connected because the current admin contract exposes no endpoint for updating user name, email, or phone.</div></div><footer className="grid grid-cols-2 gap-3 border-t border-admin-border bg-white px-8 py-4"><Link href={"/users?user=" + encodeURIComponent(user.id)} className="flex h-12 items-center justify-center rounded-[8px] border border-admin-blue text-[13px] font-bold text-admin-blue">Cancel</Link><button type="button" disabled className="flex h-12 items-center justify-center rounded-[8px] bg-admin-disabled text-[13px] font-bold text-admin-muted">Save Changes</button></footer></aside></div>;
+}
+function UserProfileDrawer({ user, edit }: { user: UserRow; edit: boolean }) {
+  if (edit) return <UserEditDrawer user={user} />;
   const initials = user.initials ?? user.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
   const drawerAction = user.allowedActions.includes("suspend") ? "suspend" : user.allowedActions.includes("activate") ? "activate" : null;
   const drawerButtonClass = drawerAction === "activate" ? "border-admin-success bg-admin-success" : "border-[#f04444] bg-[#f04444]";
@@ -411,7 +416,7 @@ function UserProfileDrawer({ user }: { user: UserRow }) {
         </div>
 
         <footer className="sticky bottom-0 z-10 grid grid-cols-2 gap-3 border-t border-admin-border bg-white px-6 py-4">
-          <button type="button" className="flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-[8px] border border-admin-blue text-[13px] font-bold text-admin-blue"><EditIcon className="h-5 w-5" />Edit</button>
+          <Link href={"/users?user=" + encodeURIComponent(user.id) + "&edit=1"} className="flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-[8px] border border-admin-blue text-[13px] font-bold text-admin-blue"><EditIcon className="h-5 w-5" />Edit</Link>
           {drawerAction ? (
             <form action={changeUserStatusAction}>
               <input type="hidden" name="userId" value={user.id} />
@@ -493,7 +498,8 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
         </div>
       </main>
 
-      {selectedUser ? <UserProfileDrawer user={selectedUser} /> : null}
+      {selectedUser ? <UserProfileDrawer user={selectedUser} edit={params.edit === "1"} /> : null}
     </>
   );
 }
+

@@ -1,11 +1,11 @@
-import { backendUrl, envelopeData, isRecord, readJson } from "@/lib/server/auth-response";
+﻿import { backendUrl, envelopeData, isRecord, readJson } from "@/lib/server/auth-response";
 
 export const AUDIT_MODULES = ["auth", "users", "patients", "facilities", "home_care", "medications", "care_episodes", "payments", "clinical_monitoring", "ai_operations", "notifications", "support", "roles", "audit_log", "settings"] as const;
 
 export type AdminAuditLog = {
   id: string; facilityId: string | null; actorId: string | null; actorName: string | null;
   actorRole: string | null; module: string; action: string; targetEntity: unknown;
-  ipAddress: string | null; metadata: unknown; createdAt: string;
+  ipAddress: string | null; userAgent: string | null; metadata: unknown; createdAt: string;
 };
 export type AdminAuditPage = { data: AdminAuditLog[]; total: number; page: number; limit: number; pages: number };
 export type AdminAuditQuery = { module?: string; actorId?: string; action?: string; from?: string; to?: string; facilityId?: string; page?: number; limit?: number };
@@ -15,7 +15,7 @@ function normalize(value: unknown): AdminAuditLog | null {
   if (!isRecord(value)) return null;
   const id = textValue(value.id), moduleName = textValue(value.module), action = textValue(value.action), createdAt = textValue(value.createdAt);
   if (!id || !moduleName || !action || !createdAt) return null;
-  return { id, module: moduleName, action, createdAt, facilityId: textValue(value.facilityId), actorId: textValue(value.actorId), actorName: textValue(value.actorName), actorRole: textValue(value.actorRole), targetEntity: value.targetEntity ?? null, ipAddress: textValue(value.ipAddress), metadata: value.metadata ?? null };
+  return { id, module: moduleName, action, createdAt, facilityId: textValue(value.facilityId), actorId: textValue(value.actorId), actorName: textValue(value.actorName), actorRole: textValue(value.actorRole), targetEntity: value.targetEntity ?? null, ipAddress: textValue(value.ipAddress), userAgent: textValue(value.userAgent), metadata: value.metadata ?? null };
 }
 export async function getAdminAuditLogs(token: string, query: AdminAuditQuery = {}): Promise<AdminAuditPage | null> {
   try {

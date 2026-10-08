@@ -1,3 +1,6 @@
+﻿"use client";
+
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -58,16 +61,17 @@ const pageTitles: Record<AdminTab, string> = {
 };
 
 export function AdminShell({ children, active, adminName = "Roland Richard", adminRole = "Super Admin", initials = "RR" }: AdminShellProps) {
+  const [collapsed, setCollapsed] = useState(false);
   return (
     <div className="flex h-screen overflow-hidden bg-admin-page text-admin-ink max-lg:flex-col">
-      <aside className="shrink-0 border-admin-border bg-white lg:h-screen lg:w-[240px] lg:border-r">
-        <div className="flex h-[88px] items-center justify-between border-b border-admin-border px-4 lg:border-b-0">
+      <aside className={["shrink-0 border-admin-border bg-white transition-[width] duration-200 lg:h-screen lg:border-r", collapsed ? "lg:w-[72px]" : "lg:w-[240px]"].join(" ")}>
+        <div className={["flex h-[88px] items-center border-b border-admin-border lg:border-b-0", collapsed ? "justify-center px-2" : "justify-between px-4"].join(" ")}>
           <div className="flex items-center gap-3">
             <Image src="/tracmedy_logo.svg" alt="Tracmedy" width={30} height={30} priority className="h-[30px] w-[30px]" />
-            <span className="text-[14px] font-bold tracking-normal text-admin-blue">TRACMEDY</span>
+            {collapsed ? null : <span className="text-[14px] font-bold tracking-normal text-admin-blue">TRACMEDY</span>}
           </div>
-          <button type="button" aria-label="Collapse navigation" className="grid h-8 w-8 place-items-center rounded-[6px] border border-admin-muted/50 text-admin-muted">
-            <span className="h-4 w-[3px] rounded-full bg-current" />
+          <button type="button" aria-label={collapsed ? "Expand navigation" : "Collapse navigation"} aria-expanded={!collapsed} title={collapsed ? "Expand navigation" : "Collapse navigation"} onClick={() => setCollapsed((value) => !value)} className={["grid h-8 w-8 place-items-center rounded-[6px] border border-admin-muted/50 text-admin-muted", collapsed ? "absolute inset-0 h-full w-full rounded-none border-0 opacity-0 focus:opacity-100" : ""].join(" ")}> 
+            <span className={collapsed ? "hidden" : "h-4 w-[3px] rounded-full bg-current"} />
           </button>
         </div>
 
@@ -76,15 +80,17 @@ export function AdminShell({ children, active, adminName = "Roland Richard", adm
             const Icon = item.icon;
             const selected = item.key === active;
             const className = [
-              "relative flex h-[52px] shrink-0 items-center gap-3 px-4 text-[14px] font-medium tracking-normal transition lg:w-full",
+              "relative flex h-[52px] shrink-0 items-center gap-3 text-[14px] font-medium tracking-normal transition lg:w-full",
               selected ? "bg-admin-sidebar-active text-admin-blue" : "text-admin-ink hover:bg-admin-soft",
             ].join(" ");
 
+            const linkClassName = [className, collapsed ? "justify-center px-0" : "px-4"].join(" ");
+
             return (
-              <Link key={item.key} href={item.href} aria-current={selected ? "page" : undefined} className={className}>
+              <Link key={item.key} href={item.href} aria-current={selected ? "page" : undefined} title={collapsed ? item.label : undefined} className={linkClassName}>
                 {selected ? <span className="absolute left-0 top-0 hidden h-full w-1 bg-admin-blue lg:block" /> : null}
                 <Icon className="h-6 w-6 shrink-0" />
-                <span className="whitespace-nowrap">{item.label}</span>
+                {collapsed ? null : <span className="whitespace-nowrap">{item.label}</span>}
               </Link>
             );
           })}
@@ -121,3 +127,6 @@ export function AdminShell({ children, active, adminName = "Roland Richard", adm
     </div>
   );
 }
+
+
+
