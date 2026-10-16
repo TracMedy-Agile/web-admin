@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { HomeIcon, SettingsIcon, ShieldIcon } from "@/components/admin/AdminIcons";
+import { CardIcon, HomeIcon, SettingsIcon, ShieldIcon } from "@/components/admin/AdminIcons";
 import { getAdminSessionToken } from "@/lib/server/admin-overview";
 import { getAdminSettingRevisions, getAdminSettings, updateAdminSettings, type AdminPolicyRevision, type AdminSettings } from "@/lib/server/admin-settings";
 import { revalidatePath } from "next/cache";
 
 type SearchParams = { section?: string; error?: string; saved?: string };
 type Props = { searchParams: Promise<SearchParams> };
-type Section = "general" | "security" | "home_care" | "integrations" | "platform_info" | "revisions";
+type Section = "general" | "security" | "home_care" | "billing" | "integrations" | "platform_info" | "revisions";
 
 function stringSetting(settings: Record<string, unknown>, key: string, fallback = ""): string {
   const value = settings[key];
@@ -28,7 +28,7 @@ function numberField(form: FormData, key: string, fallback: number): number {
 async function saveSettingsAction(form: FormData): Promise<void> {
   "use server";
   const section = form.get("section");
-  if (section !== "general" && section !== "security" && section !== "home_care" && section !== "integrations") redirect("/settings?error=1");
+  if (section !== "general" && section !== "security" && section !== "home_care" && section !== "billing" && section !== "integrations") redirect("/settings?error=1");
   const reasonValue = form.get("reason");
   const reason = typeof reasonValue === "string" ? reasonValue.trim() : "";
   const changes = section === "general"
@@ -56,20 +56,39 @@ async function saveSettingsAction(form: FormData): Promise<void> {
         { section, key: "verification_level", value: String(form.get("verification_level") ?? "basic"), reason },
         { section, key: "cost_split_patient_percent", value: numberField(form, "cost_split_patient_percent", 100), reason },
       ]
+    : section === "billing"
+    ? [
+        { section, key: "platform_fee_kobo", value: Math.round(numberField(form, "platform_fee", 50000) * 100), reason },
+        { section, key: "billable_episode_kobo", value: Math.round(numberField(form, "billable_episode", 5000) * 100), reason },
+        { section, key: "due_date_offset_days", value: numberField(form, "due_date_offset_days", 14), reason },
+        { section, key: "grace_period_days", value: numberField(form, "grace_period_days", 7), reason },
+      ]
     : [
         { section, key: "one_signal_app_id", value: String(form.get("one_signal_app_id") ?? "").trim(), reason },
         { section, key: "posthog_events_enabled", value: form.get("posthog_events_enabled") === "on", reason },
       ];
   const token = await getAdminSessionToken();
   if (!token) redirect("/login");
-  const message = await updateAdminSettings(token, changes);
-  if (!message) redirect("/settings?section=" + section + "&error=1");
+  let batches = [changes];
+  if (section === "home_care") {
+    const holdValue = numberField(form, "payout_hold_value", 3);
+    const holdUnit = String(form.get("payout_hold_unit") ?? "DAYS");
+    if (holdUnit === "HOURS" && holdValue >= 24) redirect("/settings?section=home_care&error=hours");
+    // The backend validates hold value/unit against the *stored* pair, so a unit
+    // switch must land in two saves: the key that unblocks the other goes first.
+    const firstKey = holdUnit === "HOURS" ? "payout_hold_value" : "payout_hold_unit";
+    batches = [changes.filter((change) => change.key === firstKey), changes.filter((change) => change.key !== firstKey)];
+  }
+  for (const batch of batches) {
+    const message = await updateAdminSettings(token, batch);
+    if (!message) redirect("/settings?section=" + section + "&error=1");
+  }
   revalidatePath("/settings");
   redirect("/settings?section=" + section + "&saved=1");
 }
 
-function Notice({ error, saved }: { error: boolean; saved: boolean }) {
-  if (error) return <div className="rounded-[8px] border border-admin-red/30 bg-admin-red-soft px-4 py-3 text-[13px] text-admin-red">Unable to save these settings. Check the values and your access level.</div>;
+function Notice({ error, saved, message }: { error: boolean; saved: boolean; message?: string }) {
+  if (error) return <div className="rounded-[8px] border border-admin-red/30 bg-admin-red-soft px-4 py-3 text-[13px] text-admin-red">{message ?? "Unable to save these settings. Check the values and your access level."}</div>;
   if (saved) return <div className="rounded-[8px] border border-admin-green/30 bg-admin-green-soft px-4 py-3 text-[13px] text-admin-success">Settings saved successfully.</div>;
   return null;
 }
@@ -82,8 +101,98 @@ function GeneralForm({ settings, error, saved }: { settings: Record<string, unkn
 function SecurityForm({ settings, error, saved }: { settings: Record<string, unknown>; error: boolean; saved: boolean }) {
   return <form action={saveSettingsAction} className="space-y-6"><input type="hidden" name="section" value="security" /><Notice error={error} saved={saved} /><div className="grid gap-5 md:grid-cols-2"><Field label="Minimum password length" name="password_min_length" type="number" min={8} defaultValue={numberSetting(settings, "password_min_length", 8)} /><Field label="Maximum OTP attempts" name="otp_max_attempts" type="number" min={1} defaultValue={numberSetting(settings, "otp_max_attempts", 5)} /><Field label="OTP expiry (seconds)" name="otp_expiry_seconds" type="number" min={1} defaultValue={numberSetting(settings, "otp_expiry_seconds", 300)} /><Field label="JWT access duration (minutes)" name="jwt_access_minutes" type="number" min={1} defaultValue={numberSetting(settings, "jwt_access_minutes", 15)} /><Field label="Password history count" name="password_history_count" type="number" min={0} defaultValue={numberSetting(settings, "password_history_count", 3)} /><Field label="Session timeout (minutes)" name="session_timeout_minutes" type="number" min={1} defaultValue={numberSetting(settings, "session_timeout_minutes", 1440)} /></div><ReasonField /><SaveActions /></form>;
 }
-function HomeCareForm({ settings, error, saved }: { settings: Record<string, unknown>; error: boolean; saved: boolean }) {
-  return <form action={saveSettingsAction} className="space-y-6"><input type="hidden" name="section" value="home_care" /><Notice error={error} saved={saved} /><div className="grid gap-5 md:grid-cols-2"><Field label="Provider radius (km)" name="radius_km" type="number" min={1} defaultValue={numberSetting(settings, "radius_km", 20)} /><Field label="Payout hold value" name="payout_hold_value" type="number" min={1} defaultValue={numberSetting(settings, "payout_hold_value", 3)} /><label><span className="text-[14px] font-bold text-admin-ink">Payout hold unit</span><select name="payout_hold_unit" defaultValue={stringSetting(settings, "payout_hold_unit", "DAYS")} className="mt-2 h-11 w-full rounded-[8px] border border-admin-border px-3 text-[14px]"><option value="DAYS">Days</option><option value="HOURS">Hours</option></select></label><Field label="Hold until distance (km)" name="payout_hold_until_distance_km" type="number" min={0} defaultValue={numberSetting(settings, "payout_hold_until_distance_km", 5)} /><label><span className="text-[14px] font-bold text-admin-ink">Verification level</span><select name="verification_level" defaultValue={stringSetting(settings, "verification_level", "basic")} className="mt-2 h-11 w-full rounded-[8px] border border-admin-border px-3 text-[14px]"><option value="basic">Basic</option><option value="enhanced">Enhanced</option></select></label><Field label="Patient cost split (%)" name="cost_split_patient_percent" type="number" min={0} defaultValue={numberSetting(settings, "cost_split_patient_percent", 100)} /></div><ReasonField /><SaveActions /></form>;
+function HomeCareForm({ settings, error, saved, holdHoursError }: { settings: Record<string, unknown>; error: boolean; saved: boolean; holdHoursError: boolean }) {
+  return (
+    <form action={saveSettingsAction} className="space-y-6">
+      <input type="hidden" name="section" value="home_care" />
+      <Notice error={error || holdHoursError} saved={saved} message={holdHoursError ? "An hourly payout hold must be less than 24 hours. Use days for longer holds." : undefined} />
+      <div className="grid gap-5 md:grid-cols-2">
+        <Field label="Provider radius (km)" name="radius_km" type="number" min={1} defaultValue={numberSetting(settings, "radius_km", 20)} />
+        <label><span className="text-[14px] font-bold text-admin-ink">Verification level</span><select name="verification_level" defaultValue={stringSetting(settings, "verification_level", "basic")} className="mt-2 h-11 w-full rounded-[8px] border border-admin-border px-3 text-[14px]"><option value="basic">Basic</option><option value="enhanced">Enhanced</option></select></label>
+        <Field label="Patient cost split (%)" name="cost_split_patient_percent" type="number" min={0} defaultValue={numberSetting(settings, "cost_split_patient_percent", 100)} />
+      </div>
+      <fieldset className="rounded-[8px] border border-admin-border px-5 pb-5 pt-4">
+        <legend className="px-1 text-[14px] font-bold text-admin-ink">Payout holding period</legend>
+        <p className="text-[13px] text-admin-muted">How long provider payouts are held after a completed visit before they can be released.</p>
+        <div className="mt-4 grid gap-5 md:grid-cols-3">
+          <Field label="Hold duration" name="payout_hold_value" type="number" min={1} step={1} defaultValue={numberSetting(settings, "payout_hold_value", 3)} />
+          <label><span className="text-[14px] font-bold text-admin-ink">Hold unit</span><select name="payout_hold_unit" defaultValue={stringSetting(settings, "payout_hold_unit", "DAYS")} className="mt-2 h-11 w-full rounded-[8px] border border-admin-border px-3 text-[14px]"><option value="DAYS">Days</option><option value="HOURS">Hours (under 24)</option></select></label>
+          <Field label="Hold until distance (km)" name="payout_hold_until_distance_km" type="number" min={0} defaultValue={numberSetting(settings, "payout_hold_until_distance_km", 5)} />
+        </div>
+      </fieldset>
+      <ReasonField />
+      <SaveActions />
+    </form>
+  );
+}
+function BillingForm({ settings, error, saved }: { settings: Record<string, unknown>; error: boolean; saved: boolean }) {
+  const defaultPlatformFee = numberSetting(settings, "platform_fee_kobo", 5000000) / 100;
+  const defaultEpisodeFee = numberSetting(settings, "billable_episode_kobo", 500000) / 100;
+  const defaultDueOffset = numberSetting(settings, "due_date_offset_days", 14);
+  const defaultGracePeriod = numberSetting(settings, "grace_period_days", 7);
+
+  return (
+    <form action={saveSettingsAction} className="space-y-6">
+      <input type="hidden" name="section" value="billing" />
+      <Notice error={error} saved={saved} />
+      <div className="grid gap-5 md:grid-cols-2">
+        <div>
+          <Field
+            label="Platform monthly fee (₦)"
+            name="platform_fee"
+            type="number"
+            min={0}
+            step={0.01}
+            defaultValue={defaultPlatformFee}
+          />
+          <p className="mt-1 text-[12px] text-admin-muted">
+            Base monthly fee charged to facilities on active subscription.
+          </p>
+        </div>
+        <div>
+          <Field
+            label="Per-billable-episode charge (₦)"
+            name="billable_episode"
+            type="number"
+            min={0}
+            step={0.01}
+            defaultValue={defaultEpisodeFee}
+          />
+          <p className="mt-1 text-[12px] text-admin-muted">
+            Charge applied per billable care episode completed during cycle.
+          </p>
+        </div>
+        <div>
+          <Field
+            label="Invoice due-date offset (days)"
+            name="due_date_offset_days"
+            type="number"
+            min={0}
+            step={1}
+            defaultValue={defaultDueOffset}
+          />
+          <p className="mt-1 text-[12px] text-admin-muted">
+            Days from invoice generation until payment is due (default: 14 days).
+          </p>
+        </div>
+        <div>
+          <Field
+            label="Payment grace period (days)"
+            name="grace_period_days"
+            type="number"
+            min={0}
+            step={1}
+            defaultValue={defaultGracePeriod}
+          />
+          <p className="mt-1 text-[12px] text-admin-muted">
+            Grace period days after due date before restrictions (default: 7 days).
+          </p>
+        </div>
+      </div>
+      <ReasonField />
+      <SaveActions />
+    </form>
+  );
 }
 function IntegrationsForm({ settings, error, saved }: { settings: Record<string, unknown>; error: boolean; saved: boolean }) {
   return <form action={saveSettingsAction} className="space-y-6"><input type="hidden" name="section" value="integrations" /><Notice error={error} saved={saved} /><Field label="OneSignal app ID" name="one_signal_app_id" defaultValue={stringSetting(settings, "one_signal_app_id")} /><label className="flex items-center gap-3 rounded-[8px] border border-admin-border px-4 py-4 text-[14px] font-semibold text-admin-ink"><input type="checkbox" name="posthog_events_enabled" defaultChecked={boolSetting(settings, "posthog_events_enabled")} className="h-4 w-4 accent-admin-blue" />Enable PostHog events</label><div className="rounded-[8px] border border-admin-border bg-admin-soft px-4 py-4"><p className="text-[12px] font-bold uppercase text-admin-muted">Paystack webhook secret</p><p className="mt-1 text-[14px] text-admin-ink">{stringSetting(settings, "paystack_webhook_secret_changed_at", "Not configured")}</p><p className="mt-1 text-[13px] text-admin-muted">Managed by the backend integration flow.</p></div><ReasonField /><SaveActions /></form>;
@@ -115,14 +224,15 @@ export default async function SettingsPage({ searchParams }: Props) {
   const token = await getAdminSessionToken();
   if (!token) redirect("/login");
   const params = await searchParams;
-  const section: Section = params.section === "security" ? "security" : params.section === "home_care" ? "home_care" : params.section === "integrations" ? "integrations" : params.section === "platform_info" ? "platform_info" : params.section === "revisions" ? "revisions" : "general";
+  const section: Section = params.section === "security" ? "security" : params.section === "home_care" ? "home_care" : params.section === "billing" ? "billing" : params.section === "integrations" ? "integrations" : params.section === "platform_info" ? "platform_info" : params.section === "revisions" ? "revisions" : "general";
   const result: AdminSettings | null = await getAdminSettings(token);
   const revisions = section === "revisions" ? await getAdminSettingRevisions(token) : null;
   const sectionSettings = result?.data[section] ?? {};
   const editable = result?.editableSections.includes(section) ?? false;
   const error = params.error === "1";
+  const holdHoursError = params.error === "hours";
   const saved = params.saved === "1";
   const tabClass = (active: boolean) => ["flex items-center gap-4 px-7 py-5 text-[14px] font-bold", active ? "bg-admin-blue-soft text-admin-blue" : "text-admin-ink"].join(" ");
-  const content = section === "revisions" ? <Revisions revisions={revisions} /> : section === "platform_info" ? <PlatformInfo settings={sectionSettings} /> : !result ? <SettingsUnavailable /> : !editable ? <div className="rounded-[8px] border border-admin-danger/20 bg-admin-danger-soft px-5 py-4 text-[14px] text-admin-danger">You do not have permission to edit this settings section.</div> : <section className="rounded-[10px] bg-white px-6 py-7 admin-panel-shadow"><div className="mb-6 border-b border-admin-border pb-5"><h3 className="text-[18px] font-bold text-admin-ink">{section === "general" ? "Platform Details" : section === "security" ? "Security settings" : section === "home_care" ? "Home Care settings" : "System & Integration"}</h3><p className="mt-1 text-[14px] text-admin-muted">{section === "general" ? "Core platform identity and contact information." : section === "security" ? "Configure authentication and session policy defaults." : section === "home_care" ? "Configure provider coverage, payout holds, and verification policy." : "Read-only summary of platform integrations."}</p></div>{section === "general" ? <GeneralForm settings={sectionSettings} error={error} saved={saved} /> : section === "security" ? <SecurityForm settings={sectionSettings} error={error} saved={saved} /> : section === "home_care" ? <HomeCareForm settings={sectionSettings} error={error} saved={saved} /> : <IntegrationsForm settings={sectionSettings} error={error} saved={saved} />}</section>;
-  return <main className="px-6 py-7 lg:px-8"><header className="border-b border-admin-border pb-7"><h2 className="text-[26px] font-bold text-admin-ink">Settings</h2><p className="mt-2 text-[16px] text-admin-muted">Platform-wide configuration, security, and system information</p></header><div className="mt-7 grid gap-0 xl:grid-cols-[300px_minmax(0,1fr)]"><aside className="overflow-hidden rounded-[8px] bg-white admin-panel-shadow"><Link href="/settings?section=general" className={tabClass(section === "general")}><SettingsIcon className="h-6 w-6" />General</Link><Link href="/settings?section=security" className={tabClass(section === "security")}><ShieldIcon className="h-6 w-6" />Security</Link><Link href="/settings?section=home_care" className={tabClass(section === "home_care")}><HomeIcon className="h-6 w-6" />Home Care</Link><Link href="/settings?section=integrations" className={tabClass(section === "integrations")}><span className="text-[22px] leading-none">&lt;/&gt;</span>System &amp; Integrations</Link><Link href="/settings?section=platform_info" className={tabClass(section === "platform_info")}><span className="grid h-6 w-6 place-items-center rounded-full border border-current text-[13px]">i</span>Platform Information</Link></aside><div className="min-w-0 xl:pl-8">{content}</div></div></main>;
+  const content = section === "revisions" ? <Revisions revisions={revisions} /> : section === "platform_info" ? <PlatformInfo settings={sectionSettings} /> : !result ? <SettingsUnavailable /> : !editable ? <div className="rounded-[8px] border border-admin-danger/20 bg-admin-danger-soft px-5 py-4 text-[14px] text-admin-danger">You do not have permission to edit this settings section.</div> : <section className="rounded-[10px] bg-white px-6 py-7 admin-panel-shadow"><div className="mb-6 border-b border-admin-border pb-5"><h3 className="text-[18px] font-bold text-admin-ink">{section === "general" ? "Platform Details" : section === "security" ? "Security settings" : section === "home_care" ? "Home Care settings" : section === "billing" ? "Billing & Invoicing settings" : "System & Integration"}</h3><p className="mt-1 text-[14px] text-admin-muted">{section === "general" ? "Core platform identity and contact information." : section === "security" ? "Configure authentication and session policy defaults." : section === "home_care" ? "Configure provider coverage, payout holds, and verification policy." : section === "billing" ? "Configure facility subscription platform fees, per-episode charges, and grace periods." : "Read-only summary of platform integrations."}</p></div>{section === "general" ? <GeneralForm settings={sectionSettings} error={error} saved={saved} /> : section === "security" ? <SecurityForm settings={sectionSettings} error={error} saved={saved} /> : section === "home_care" ? <HomeCareForm settings={sectionSettings} error={error} saved={saved} holdHoursError={holdHoursError} /> : section === "billing" ? <BillingForm settings={sectionSettings} error={error} saved={saved} /> : <IntegrationsForm settings={sectionSettings} error={error} saved={saved} />}</section>;
+  return <main className="px-6 py-7 lg:px-8"><header className="border-b border-admin-border pb-7"><h2 className="text-[26px] font-bold text-admin-ink">Settings</h2><p className="mt-2 text-[16px] text-admin-muted">Platform-wide configuration, security, and system information</p></header><div className="mt-7 grid gap-0 xl:grid-cols-[300px_minmax(0,1fr)]"><aside className="overflow-hidden rounded-[8px] bg-white admin-panel-shadow"><Link href="/settings?section=general" className={tabClass(section === "general")}><SettingsIcon className="h-6 w-6" />General</Link><Link href="/settings?section=security" className={tabClass(section === "security")}><ShieldIcon className="h-6 w-6" />Security</Link><Link href="/settings?section=home_care" className={tabClass(section === "home_care")}><HomeIcon className="h-6 w-6" />Home Care</Link><Link href="/settings?section=billing" className={tabClass(section === "billing")}><CardIcon className="h-6 w-6" />Billing</Link><Link href="/settings?section=integrations" className={tabClass(section === "integrations")}><span className="text-[22px] leading-none">&lt;/&gt;</span>System &amp; Integrations</Link><Link href="/settings?section=platform_info" className={tabClass(section === "platform_info")}><span className="grid h-6 w-6 place-items-center rounded-full border border-current text-[13px]">i</span>Platform Information</Link></aside><div className="min-w-0 xl:pl-8">{content}</div></div></main>;
 }
