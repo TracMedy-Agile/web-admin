@@ -25,13 +25,14 @@ import {
 } from "@/components/admin/AdminIcons";
 import { FacilitiesRegisterBoundary } from "@/components/admin/FacilitiesRegisterBoundary";
 import { getAdminFacilitiesList, getAdminFacilitiesSummary, getAdminFacilityDetail, getAdminSessionToken, registerAdminFacility, updateAdminFacilityStatus } from "@/lib/server/admin-overview";
+import { getAdminTransactions, type AdminTransaction } from "@/lib/server/admin-payments";
 
 type FacilitiesPageProps = {
   searchParams: Promise<{ state?: string; register?: string; facility?: string; suspend?: string; payments?: string; page?: string; pageSize?: string; search?: string; status?: string; dateFrom?: string; dateTo?: string }>;
 };
 
 type FacilityStatus = "Active" | "Suspended" | "Inactive";
-type PaymentStatus = "Successful" | "Pending" | "Processing" | "Finding Provider" | "Reversed";
+type PaymentStatus = "Successful" | "Pending" | "Processing" | "Finding Provider" | "Reversed" | "Failed";
 
 type FacilityRow = {
   id: string;
@@ -112,18 +113,6 @@ function facilityRowsFromApi(rows: Array<{ id: string; tracId: string; facilityN
     dateRegistered: formatDateLabel(row.dateRegistered),
   }));
 }
-const paymentTransactions: TransactionRow[] = [
-  { id: "TRC-TXN- 10045", purpose: "License Fee", amount: naira + "50,000", dueDate: "5 Sep, 2026", nextBillingDate: "1 Sep, 2026", status: "Successful" },
-  { id: "TRC-TXN- 10046", purpose: "License Fee", amount: naira + "50,000", dueDate: "5 Sep, 2026", nextBillingDate: "1 Sep, 2026", status: "Successful" },
-  { id: "TRC-TXN- 10047", purpose: "3 Care Episodes", amount: naira + "15,000", dueDate: "5 Sep, 2026", nextBillingDate: "1 Sep, 2026", status: "Successful" },
-  { id: "TRC-TXN- 10048", purpose: "License Fee", amount: naira + "50,000", dueDate: "5 Sep, 2026", nextBillingDate: "1 Sep, 2026", status: "Pending" },
-  { id: "TRC-TXN- 10049", purpose: "License Fee", amount: naira + "50,000", dueDate: "5 Aug, 2026", nextBillingDate: "5 Sep, 2026", status: "Successful" },
-  { id: "TRC-TXN- 10050", purpose: "License Fee", amount: naira + "50,000", dueDate: "5 Aug, 2026", nextBillingDate: "5 Sep, 2026", status: "Processing" },
-  { id: "TRC-TXN- 10051", purpose: "License Fee", amount: naira + "50,000", dueDate: "5 Jul, 2026", nextBillingDate: "5 Aug, 2026", status: "Pending" },
-  { id: "TRC-TXN- 10052", purpose: "License Fee", amount: naira + "50,000", dueDate: "5 Jul, 2026", nextBillingDate: "5 Aug, 2026", status: "Finding Provider" },
-  { id: "TRC-TXN- 10054", purpose: "5 Care Episodes", amount: naira + "25,000", dueDate: "5 Jul, 2026", nextBillingDate: "5 Aug, 2026", status: "Reversed" },
-];
-
 function valueOrPlaceholder(value: string | null): string {
   return value && value.trim() ? value : "--";
 }
@@ -649,8 +638,33 @@ function SuspendFacilityModal({ facility }: { facility: FacilityDetail }) {
   );
 }
 
-function PaymentHistoryPage() {
+function PaymentHistoryPage({
+  facility,
+  transactions = [],
+}: {
+  facility: FacilityDetail | null;
+  transactions?: AdminTransaction[];
+}) {
   const filters = ["All Time", "7 Days", "30 Days", "Custom"];
+  const facilityName = facility?.name ?? "Facility";
+  const facilityId = facility?.id ?? "";
+
+  const totalCount = transactions.length;
+  const careEpisodeTx = transactions.filter((t) => t.kind === "CARE_EPISODE");
+  const careEpisodeRevenue = careEpisodeTx.filter((t) => t.status === "SUCCESS").reduce((sum, t) => sum + t.amountKobo / 100, 0);
+  const careEpisodesPaidCount = careEpisodeTx.filter((t) => t.status === "SUCCESS").length;
+  const subscriptionTx = transactions.filter((t) => t.kind === "SUBSCRIPTION");
+  const subscriptionRevenue = subscriptionTx.filter((t) => t.status === "SUCCESS").reduce((sum, t) => sum + t.amountKobo / 100, 0);
+  const totalRevenue = careEpisodeRevenue + subscriptionRevenue;
+
+  const displayRows: TransactionRow[] = transactions.map((t) => ({
+        id: t.gatewayReference || t.id,
+        purpose: t.kind === "CARE_EPISODE" ? "Care Episode" : "License Fee",
+        amount: naira + new Intl.NumberFormat("en-US").format(Math.round(t.amountKobo / 100)),
+        dueDate: new Date(t.createdAt).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" }),
+        nextBillingDate: "--",
+        status: t.status === "SUCCESS" ? "Successful" : t.status === "INITIALIZED" ? "Pending" : t.status === "FAILED" ? "Failed" : t.status === "REFUNDED" ? "Reversed" : "Processing",
+      }));
 
   return (
     <main className="px-6 py-7 lg:px-8">
@@ -658,19 +672,19 @@ function PaymentHistoryPage() {
         <BuildingIcon className="h-4 w-4 text-admin-muted" />
         <Link href="/facilities" className="text-admin-text/85">Facilities</Link>
         <ChevronRightIcon className="h-4 w-4 text-admin-muted" />
-        <Link href="/facilities?facility=TRC-001" className="text-admin-text/85">Kaiser Hospital</Link>
+        <Link href={`/facilities?facility=${encodeURIComponent(facilityId)}`} className="text-admin-text/85">{facilityName}</Link>
         <ChevronRightIcon className="h-4 w-4 text-admin-muted" />
         <span className="text-admin-ink">Payment History</span>
       </nav>
 
       <section className="mt-7 flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
         <div className="flex items-start gap-5">
-          <Link href="/facilities?facility=TRC-001" aria-label="Back to Kaiser Hospital" className="mt-1 grid h-10 w-10 place-items-center rounded-full border border-admin-border text-admin-text">
+          <Link href={`/facilities?facility=${encodeURIComponent(facilityId)}`} aria-label={`Back to ${facilityName}`} className="mt-1 grid h-10 w-10 place-items-center rounded-full border border-admin-border text-admin-text">
             <ChevronLeftIcon className="h-6 w-6" />
           </Link>
           <div>
             <h2 className="text-[26px] font-bold text-admin-ink">Payment History</h2>
-            <p className="mt-3 text-[16px] text-admin-text/90">View all subscription and Care Episode payments for <strong>Kaiser Hospital.</strong></p>
+            <p className="mt-3 text-[16px] text-admin-text/90">View all subscription and Care Episode payments for <strong>{facilityName}.</strong></p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-6">
@@ -687,11 +701,11 @@ function PaymentHistoryPage() {
       </section>
 
       <section className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <PaymentMetricCard icon={<ReceiptIcon className="h-8 w-8" />} label="Total Transactions" value="30" />
-        <PaymentMetricCard icon={<BriefcaseIcon className="h-8 w-8" />} label="Paid Care Episodes" value="18" />
-        <PaymentMetricCard icon={<WalletIcon className="h-8 w-8" />} label="Care Episode Revenue" value={naira + "90,000"} />
-        <PaymentMetricCard icon={<WalletIcon className="h-8 w-8" />} label="Subscription Revenue" value={naira + "750,000"} />
-        <PaymentMetricCard icon={<CardStackIcon />} label="Total Revenue" value={naira + "840,000"} />
+        <PaymentMetricCard icon={<ReceiptIcon className="h-8 w-8" />} label="Total Transactions" value={String(totalCount)} />
+        <PaymentMetricCard icon={<BriefcaseIcon className="h-8 w-8" />} label="Paid Care Episodes" value={String(careEpisodesPaidCount)} />
+        <PaymentMetricCard icon={<WalletIcon className="h-8 w-8" />} label="Care Episode Revenue" value={naira + new Intl.NumberFormat("en-US").format(careEpisodeRevenue)} />
+        <PaymentMetricCard icon={<WalletIcon className="h-8 w-8" />} label="Subscription Revenue" value={naira + new Intl.NumberFormat("en-US").format(subscriptionRevenue)} />
+        <PaymentMetricCard icon={<CardStackIcon />} label="Total Revenue" value={naira + new Intl.NumberFormat("en-US").format(totalRevenue)} />
       </section>
 
       <section className="mt-8 overflow-hidden rounded-[10px] bg-white px-6 pt-6">
@@ -725,7 +739,10 @@ function PaymentHistoryPage() {
               </tr>
             </thead>
             <tbody className="text-[14px] text-admin-text/90">
-              {paymentTransactions.map((transaction) => (
+              {displayRows.length === 0 ? (
+                <tr><td colSpan={7} className="px-3 py-12 text-center text-admin-muted">No payments recorded for this facility yet.</td></tr>
+              ) : null}
+              {displayRows.map((transaction) => (
                 <tr key={transaction.id} className="border-b border-admin-border/35 last:border-b-0">
                   <td className="px-3 py-[22px]">{transaction.id}</td>
                   <td className="px-3 py-[22px] text-admin-ink">{transaction.purpose}</td>
@@ -740,7 +757,7 @@ function PaymentHistoryPage() {
           </table>
         </div>
         <footer className="flex min-h-[64px] items-center justify-between border-t border-admin-border text-[14px] text-admin-muted">
-          <span>Showing 1-10 of 72 Transactions</span>
+          <span>Showing 1-{displayRows.length} of {displayRows.length} Transactions</span>
           <div className="flex items-center gap-3 text-admin-ink">
             <button type="button" aria-label="Previous page" className="grid h-8 w-8 place-items-center rounded-[7px] border border-admin-border text-admin-neutral"><ChevronLeftIcon className="h-4 w-4" /></button>
             <span className="grid h-8 w-8 place-items-center rounded-[7px] bg-admin-blue font-bold text-white">1</span>
@@ -815,7 +832,14 @@ export default async function FacilitiesPage({ searchParams }: FacilitiesPagePro
   const showPayments = params.payments === "1";
 
   if (showPayments) {
-    return <PaymentHistoryPage />;
+    const [facilityDetail, transactionsData] = await Promise.all([
+      params.facility ? getAdminFacilityDetail(token, params.facility) : Promise.resolve(null),
+      getAdminTransactions(token, { limit: 50 }),
+    ]);
+    const facility = facilityDetail ? facilityDetailFromApi(facilityDetail) : null;
+    const transactions = (transactionsData?.items ?? []).filter((t) => Boolean(params.facility) && t.facilityId === params.facility);
+
+    return <PaymentHistoryPage facility={facility} transactions={transactions} />;
   }
 
   const query = { page: params.page, pageSize: params.pageSize, search: params.search, status: params.status, dateFrom: params.dateFrom, dateTo: params.dateTo };
