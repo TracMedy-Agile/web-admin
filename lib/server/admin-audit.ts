@@ -3,8 +3,13 @@
 export const AUDIT_MODULES = ["auth", "users", "patients", "facilities", "home_care", "medications", "care_episodes", "payments", "clinical_monitoring", "ai_operations", "notifications", "support", "roles", "audit_log", "settings"] as const;
 
 export type AdminAuditLog = {
-  id: string; facilityId: string | null; actorId: string | null; actorName: string | null;
+  id: string;
+  /** Human-readable, immutable audit code shown as "Log ID" (e.g. AUD-2026-0001). */
+  auditCode: string | null;
+  facilityId: string | null; actorId: string | null; actorName: string | null;
   actorRole: string | null; module: string; action: string; targetEntity: unknown;
+  /** Readable identifier of the target entity (e.g. a TRC / EP code), when the backend can resolve one. */
+  targetEntityDisplayId: string | null;
   ipAddress: string | null; userAgent: string | null; metadata: unknown; createdAt: string;
 };
 export type AdminAuditPage = { data: AdminAuditLog[]; total: number; page: number; limit: number; pages: number };
@@ -15,7 +20,7 @@ function normalize(value: unknown): AdminAuditLog | null {
   if (!isRecord(value)) return null;
   const id = textValue(value.id), moduleName = textValue(value.module), action = textValue(value.action), createdAt = textValue(value.createdAt);
   if (!id || !moduleName || !action || !createdAt) return null;
-  return { id, module: moduleName, action, createdAt, facilityId: textValue(value.facilityId), actorId: textValue(value.actorId), actorName: textValue(value.actorName), actorRole: textValue(value.actorRole), targetEntity: value.targetEntity ?? null, ipAddress: textValue(value.ipAddress), userAgent: textValue(value.userAgent), metadata: value.metadata ?? null };
+  return { id, auditCode: textValue(value.auditCode), targetEntityDisplayId: textValue(value.targetEntityDisplayId), module: moduleName, action, createdAt, facilityId: textValue(value.facilityId), actorId: textValue(value.actorId), actorName: textValue(value.actorName), actorRole: textValue(value.actorRole), targetEntity: value.targetEntity ?? null, ipAddress: textValue(value.ipAddress), userAgent: textValue(value.userAgent), metadata: value.metadata ?? null };
 }
 export async function getAdminAuditLogs(token: string, query: AdminAuditQuery = {}): Promise<AdminAuditPage | null> {
   try {

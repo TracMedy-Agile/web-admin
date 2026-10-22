@@ -19,10 +19,10 @@ import {
   UsersIcon,
   UserXIcon,
 } from "@/components/admin/AdminIcons";
-import { getAdminOverview, getAdminSessionToken, getAdminUserDetail, getAdminUsersList, getAdminUsersSummary, updateAdminUserStatus } from "@/lib/server/admin-overview";
+import { getAdminOverview, getAdminSessionToken, getAdminUserDetail, getAdminUsersList, getAdminUsersSummary, updateAdminUserProfile, updateAdminUserStatus, type AdminUserProfileUpdate } from "@/lib/server/admin-overview";
 
 type UsersPageProps = {
-  searchParams: Promise<{ user?: string; edit?: string; state?: string; page?: string; pageSize?: string; search?: string; status?: string; dateFrom?: string; dateTo?: string }>;
+  searchParams: Promise<{ user?: string; edit?: string; editError?: string; updated?: string; reverify?: string; state?: string; page?: string; pageSize?: string; search?: string; status?: string; dateFrom?: string; dateTo?: string }>;
 };
 
 type UserRow = {
@@ -147,6 +147,60 @@ async function changeUserStatusAction(formData: FormData): Promise<void> {
   await updateAdminUserStatus(token, userId, action);
   revalidatePath("/users");
 }
+
+function formText(formData: FormData, key: string): string {
+  const value = formData.get(key);
+  return typeof value === "string" ? value.trim() : "";
+}
+
+// USER-03: send only the fields the admin changed (PATCH rejects an empty body).
+async function updateUserProfileAction(formData: FormData): Promise<void> {
+  "use server";
+
+  const userId = formText(formData, "userId");
+  if (!userId) redirect("/users");
+  const editHref = "/users?user=" + encodeURIComponent(userId) + "&edit=1";
+
+  const input: AdminUserProfileUpdate = {};
+  const name = formText(formData, "name");
+  const email = formText(formData, "email");
+  const phone = formText(formData, "phone");
+  if (name !== formText(formData, "originalName")) {
+    if (!name) redirect(editHref + "&editError=name");
+    input.name = name;
+  }
+  if (email.toLowerCase() !== formText(formData, "originalEmail").toLowerCase()) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) redirect(editHref + "&editError=email");
+    input.email = email;
+  }
+  if (phone !== formText(formData, "originalPhone")) {
+    if (!phone) redirect(editHref + "&editError=phone");
+    input.phone = phone;
+  }
+  if (Object.keys(input).length === 0) redirect("/users?user=" + encodeURIComponent(userId));
+
+  const token = await getAdminSessionToken();
+  if (!token) redirect("/login");
+
+  const result = await updateAdminUserProfile(token, userId, input);
+  if (!result.ok) {
+    const code = result.status === 409 ? "emailTaken" : result.status === 400 ? "invalid" : "failed";
+    redirect(editHref + "&editError=" + code);
+  }
+
+  revalidatePath("/users");
+  const reverify = [input.email ? "email" : "", input.phone ? "phone" : ""].filter(Boolean).join(",");
+  redirect("/users?user=" + encodeURIComponent(userId) + "&updated=1" + (reverify ? "&reverify=" + reverify : ""));
+}
+
+const EDIT_ERROR_MESSAGES: Record<string, string> = {
+  name: "Full name can't be blank.",
+  email: "Enter a valid email address.",
+  phone: "Phone number can't be blank.",
+  emailTaken: "That email address is already used by another account.",
+  invalid: "Some details were rejected. Check the email and phone number and try again.",
+  failed: "Unable to save the profile right now. Please try again.",
+};
 
 function StatusActionButton({ user, action }: { user: UserRow; action: "activate" | "suspend" }) {
   const isSuspend = action === "suspend";
@@ -356,12 +410,15 @@ function DetailRow({ icon, label, value }: { icon: React.ReactNode; label: strin
   );
 }
 
-function UserEditDrawer({ user }: { user: UserRow }) {
+function UserEditDrawer({ user, editError }: { user: UserRow; editError?: string }) {
+  const phone = user.phone === "--" ? "" : user.phone;
+  const errorMessage = editError ? EDIT_ERROR_MESSAGES[editError] ?? EDIT_ERROR_MESSAGES.failed : "";
   const initials = user.initials ?? user.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
-  return <div className="fixed inset-0 z-50 bg-admin-overlay backdrop-blur-[3px]"><aside className="ml-auto flex h-dvh w-full max-w-[560px] flex-col bg-white shadow-2xl"><header className="flex h-[88px] items-center justify-between border-b border-admin-border px-6"><div className="flex items-center gap-4"><div className="grid h-12 w-12 place-items-center rounded-full bg-admin-blue text-[16px] font-bold text-white">{initials}</div><div><h2 className="text-[18px] font-bold text-admin-ink">{user.name}</h2><div className="mt-2 flex gap-2"><span className={["rounded-full px-3 py-1 text-[12px] font-medium", statusClass(user.status)].join(" ")}>{user.status}</span><span className="rounded-full border border-admin-blue bg-admin-blue-soft px-3 py-1 text-[12px] font-bold text-admin-blue">{user.plan}</span></div></div></div><Link href={"/users?user=" + encodeURIComponent(user.id)} aria-label="Close edit user" className="text-admin-text"><CloseIcon className="h-7 w-7" /></Link></header><div className="min-h-0 flex-1 overflow-y-auto px-8 py-8"><div className="flex items-center justify-between"><h3 className="text-[13px] font-bold uppercase tracking-[0.12em] text-admin-muted">User Information</h3><span className="inline-flex items-center gap-2 text-[13px] font-bold text-admin-blue"><EditIcon className="h-4 w-4" />Editable Fields</span></div><div className="mt-6 space-y-5"><label className="block text-[13px] font-bold text-admin-ink">Full Name<input defaultValue={user.name} readOnly className="mt-2 h-12 w-full rounded-[8px] border border-admin-border bg-white px-4 text-[14px] text-admin-ink" /></label><label className="block text-[13px] font-bold text-admin-ink">Email Address<input defaultValue={user.email} readOnly type="email" className="mt-2 h-12 w-full rounded-[8px] border border-admin-border bg-white px-4 text-[14px] text-admin-ink" /></label><label className="block text-[13px] font-bold text-admin-ink">Phone Number<input defaultValue={user.phone} readOnly type="tel" className="mt-2 h-12 w-full rounded-[8px] border border-admin-border bg-white px-4 text-[14px] text-admin-ink" /></label></div><div className="mt-8"><h3 className="text-[13px] font-bold uppercase tracking-[0.12em] text-admin-muted">User Information</h3><div className="mt-3 overflow-hidden rounded-[8px] border border-admin-border"><DetailRow icon={<IdIcon className="h-5 w-5" />} label="User ID" value={user.displayId} /><DetailRow icon={<UsersIcon className="h-5 w-5" />} label="Account Status" value={user.status} /><DetailRow icon={<CardIcon className="h-5 w-5" />} label="Subscription Plan" value={user.plan === "PLUS" ? "Tracmedy Plus" : "Tracmedy Free"} /><DetailRow icon={<CalendarIcon className="h-5 w-5" />} label="Date Joined" value={user.dateJoined} /><DetailRow icon={<CalendarIcon className="h-5 w-5" />} label="Last Login" value={user.lastActivity} /></div></div><div className="mt-6 rounded-[8px] border border-admin-yellow/30 bg-admin-yellow-soft px-4 py-3 text-[13px] leading-5 text-admin-warning">Profile editing is not connected because the current admin contract exposes no endpoint for updating user name, email, or phone.</div></div><footer className="grid grid-cols-2 gap-3 border-t border-admin-border bg-white px-8 py-4"><Link href={"/users?user=" + encodeURIComponent(user.id)} className="flex h-12 items-center justify-center rounded-[8px] border border-admin-blue text-[13px] font-bold text-admin-blue">Cancel</Link><button type="button" disabled className="flex h-12 items-center justify-center rounded-[8px] bg-admin-disabled text-[13px] font-bold text-admin-muted">Save Changes</button></footer></aside></div>;
+  return <div className="fixed inset-0 z-50 bg-admin-overlay backdrop-blur-[3px]"><aside className="ml-auto flex h-dvh w-full max-w-[560px] flex-col bg-white shadow-2xl"><header className="flex h-[88px] items-center justify-between border-b border-admin-border px-6"><div className="flex items-center gap-4"><div className="grid h-12 w-12 place-items-center rounded-full bg-admin-blue text-[16px] font-bold text-white">{initials}</div><div><h2 className="text-[18px] font-bold text-admin-ink">{user.name}</h2><div className="mt-2 flex gap-2"><span className={["rounded-full px-3 py-1 text-[12px] font-medium", statusClass(user.status)].join(" ")}>{user.status}</span><span className="rounded-full border border-admin-blue bg-admin-blue-soft px-3 py-1 text-[12px] font-bold text-admin-blue">{user.plan}</span></div></div></div><Link href={"/users?user=" + encodeURIComponent(user.id)} aria-label="Close edit user" className="text-admin-text"><CloseIcon className="h-7 w-7" /></Link></header><form action={updateUserProfileAction} className="flex min-h-0 flex-1 flex-col"><input type="hidden" name="userId" value={user.id} /><input type="hidden" name="originalName" value={user.name} /><input type="hidden" name="originalEmail" value={user.email} /><input type="hidden" name="originalPhone" value={phone} /><div className="min-h-0 flex-1 overflow-y-auto px-8 py-8">{errorMessage ? <div role="alert" className="mb-6 rounded-[8px] border border-admin-red/30 bg-admin-red-soft px-4 py-3 text-[13px] font-semibold text-admin-red">{errorMessage}</div> : null}<div className="flex items-center justify-between"><h3 className="text-[13px] font-bold uppercase tracking-[0.12em] text-admin-muted">User Information</h3><span className="inline-flex items-center gap-2 text-[13px] font-bold text-admin-blue"><EditIcon className="h-4 w-4" />Editable Fields</span></div><div className="mt-6 space-y-5"><label className="block text-[13px] font-bold text-admin-ink">Full Name<input name="name" required maxLength={120} defaultValue={user.name} autoComplete="name" className="mt-2 h-12 w-full rounded-[8px] border border-admin-border bg-white px-4 text-[14px] text-admin-ink outline-none focus:border-admin-blue" /></label><label className="block text-[13px] font-bold text-admin-ink">Email Address<input name="email" required type="email" defaultValue={user.email} autoComplete="email" className="mt-2 h-12 w-full rounded-[8px] border border-admin-border bg-white px-4 text-[14px] text-admin-ink outline-none focus:border-admin-blue" /></label><label className="block text-[13px] font-bold text-admin-ink">Phone Number<input name="phone" type="tel" maxLength={30} defaultValue={phone} autoComplete="tel" placeholder="e.g. +2348012345678" className="mt-2 h-12 w-full rounded-[8px] border border-admin-border bg-white px-4 text-[14px] text-admin-ink outline-none focus:border-admin-blue" /></label></div><div className="mt-8"><h3 className="text-[13px] font-bold uppercase tracking-[0.12em] text-admin-muted">User Information</h3><div className="mt-3 overflow-hidden rounded-[8px] border border-admin-border"><DetailRow icon={<IdIcon className="h-5 w-5" />} label="User ID" value={user.displayId} /><DetailRow icon={<UsersIcon className="h-5 w-5" />} label="Account Status" value={user.status} /><DetailRow icon={<CardIcon className="h-5 w-5" />} label="Subscription Plan" value={user.plan === "PLUS" ? "Tracmedy Plus" : "Tracmedy Free"} /><DetailRow icon={<CalendarIcon className="h-5 w-5" />} label="Date Joined" value={user.dateJoined} /><DetailRow icon={<CalendarIcon className="h-5 w-5" />} label="Last Login" value={user.lastActivity} /></div></div><div className="mt-6 rounded-[8px] border border-admin-yellow/30 bg-admin-yellow-soft px-4 py-3 text-[13px] leading-5 text-admin-warning">Changing the email or phone number resets its verification. The patient is sent a new verification code and must confirm it.</div></div><footer className="grid grid-cols-2 gap-3 border-t border-admin-border bg-white px-8 py-4"><Link href={"/users?user=" + encodeURIComponent(user.id)} className="flex h-12 items-center justify-center rounded-[8px] border border-admin-blue text-[13px] font-bold text-admin-blue">Cancel</Link><button type="submit" className="flex h-12 items-center justify-center rounded-[8px] bg-admin-blue text-[13px] font-bold text-white">Save Changes</button></footer></form></aside></div>;
 }
-function UserProfileDrawer({ user, edit }: { user: UserRow; edit: boolean }) {
-  if (edit) return <UserEditDrawer user={user} />;
+function UserProfileDrawer({ user, edit, editError, updated, reverify }: { user: UserRow; edit: boolean; editError?: string; updated: boolean; reverify: string[] }) {
+  if (edit) return <UserEditDrawer user={user} editError={editError} />;
+  const reverifyLabel = reverify.length ? reverify.join(" and ") : "";
   const initials = user.initials ?? user.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
   const drawerAction = user.allowedActions.includes("suspend") ? "suspend" : user.allowedActions.includes("activate") ? "activate" : null;
   const drawerButtonClass = drawerAction === "activate" ? "border-admin-success bg-admin-success" : "border-[#f04444] bg-[#f04444]";
@@ -384,6 +441,11 @@ function UserProfileDrawer({ user, edit }: { user: UserRow; edit: boolean }) {
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+          {updated ? (
+            <div role="status" className="mb-6 rounded-[8px] border border-admin-green/30 bg-admin-green-soft px-4 py-3 text-[13px] leading-5 text-admin-success">
+              Profile updated.{reverifyLabel ? ` A verification code was sent to the new ${reverifyLabel}; it stays unverified until the patient confirms it.` : ""}
+            </div>
+          ) : null}
           <section>
             <h3 className="text-[13px] font-bold uppercase tracking-[0.12em] text-admin-muted">User Information</h3>
             <div className="mt-3 overflow-hidden rounded-[8px] border border-admin-border">
@@ -441,8 +503,12 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
   const [overview, usersSummary, usersList, userDetail] = await Promise.all([getAdminOverview(token), getAdminUsersSummary(token), getAdminUsersList(token, query), params.user ? getAdminUserDetail(token, params.user) : Promise.resolve(null)]);
   const displayIds: Record<string, string> = {};
   if (usersList) {
-    const details = await Promise.all(usersList.items.map((row) => getAdminUserDetail(token, row.id)));
-    usersList.items.forEach((row, index) => { displayIds[row.id] = details[index]?.tracmedyPatientId ?? "--"; });
+    // The list row has no readable ID yet (AdminUserRowDto), so fall back to one detail call per
+    // row — only for rows that don't already carry tracmedyPatientId.
+    const missing = usersList.items.filter((row) => !row.tracmedyPatientId);
+    const details = await Promise.all(missing.map((row) => getAdminUserDetail(token, row.id)));
+    usersList.items.forEach((row) => { if (row.tracmedyPatientId) displayIds[row.id] = row.tracmedyPatientId; });
+    missing.forEach((row, index) => { displayIds[row.id] = details[index]?.tracmedyPatientId ?? "--"; });
   }
   const showingProfile = Boolean(params.user);
   const empty = params.state === "empty";
@@ -498,7 +564,15 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
         </div>
       </main>
 
-      {selectedUser ? <UserProfileDrawer user={selectedUser} edit={params.edit === "1"} /> : null}
+      {selectedUser ? (
+        <UserProfileDrawer
+          user={selectedUser}
+          edit={params.edit === "1"}
+          editError={params.editError}
+          updated={params.updated === "1"}
+          reverify={(params.reverify ?? "").split(",").filter((item) => item === "email" || item === "phone")}
+        />
+      ) : null}
     </>
   );
 }

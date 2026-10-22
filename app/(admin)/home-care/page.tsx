@@ -1044,7 +1044,7 @@ function RequestDetailsDrawer({ detail, matches, closeQuery, requestId, selected
                 <DetailSection title="Patient Information">
                   <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     <DetailRow label="Name" value={fieldText(patient, "name")} />
-                    <DetailRow label="Patient ID" value={fieldText(patient, "patientId")} />
+                    <DetailRow label="Patient ID" value={fieldText(patient, "tracmedyPatientId")} />
                     <DetailRow label="Age" value={fieldText(patient, "age")} />
                     <DetailRow label="Gender" value={labelFromApiValue(fieldText(patient, "gender"))} />
                     <DetailRow label="Phone" value={fieldText(patient, "phone")} />
@@ -1083,7 +1083,7 @@ function RequestDetailsDrawer({ detail, matches, closeQuery, requestId, selected
                           <div key={fieldText(document, "documentId", index.toString())} className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
                             <div>
                               <p className="text-[14px] font-bold text-admin-ink">{fieldText(document, "fileName", "Document")}</p>
-                              <p className="mt-1 text-[13px] text-admin-muted">{labelFromApiValue(fieldText(document, "fileType")) + " - " + fieldDate(document, "uploadDate")}</p>
+                              <p className="mt-1 text-[13px] text-admin-muted">{[fieldText(document, "documentReference", ""), labelFromApiValue(fieldText(document, "fileType")), fieldDate(document, "uploadDate")].filter(Boolean).join(" - ")}</p>
                             </div>
                             <div className="flex items-center gap-3">
                               <span className="rounded-full bg-admin-neutral-soft px-3 py-1 text-[12px] font-bold text-admin-muted">{labelFromApiValue(fieldText(document, "verificationStatus"))}</span>
@@ -1239,7 +1239,7 @@ function RequestDetailsDrawer({ detail, matches, closeQuery, requestId, selected
       {showCancelQuote ? <CancelQuoteModal quote={quote} requestId={requestId} /> : null}
       {showHoldRequest ? <HoldRequestModal requestId={requestId} holdError={holdError} /> : null}
       {showCancelRequest ? <CancelRequestModal requestId={requestId} cancelError={cancelError} /> : null}
-      {previewDocumentId ? <DocumentPreviewModal documentPreview={documentPreview} requestId={requestId} documentId={previewDocumentId} /> : null}
+      {previewDocumentId ? <DocumentPreviewModal documentPreview={documentPreview} requestId={requestId} documentReference={fieldText(detail?.uploadedDocuments.find((document) => fieldText(document, "documentId", "") === previewDocumentId) ?? {}, "documentReference", fieldText(documentPreview ?? {}, "documentReference"))} /> : null}
     </div>
   );
 }
@@ -1361,7 +1361,8 @@ function ConfirmProviderModal({ provider, providerId, requestId, requestedDateTi
     </div>
   );
 }
-function DocumentPreviewModal({ documentPreview, requestId, documentId }: { documentPreview: AdminHomeCareRequestDocument | null; requestId: string; documentId: string }) {
+// `documentReference` is the readable document ID from the request detail (never the raw documentId).
+function DocumentPreviewModal({ documentPreview, requestId, documentReference }: { documentPreview: AdminHomeCareRequestDocument | null; requestId: string; documentReference: string }) {
   const previewUrl = fieldText(documentPreview ?? {}, "previewUrl", "");
   const fileName = fieldText(documentPreview ?? {}, "fileName", "Document preview");
   const fileType = fieldText(documentPreview ?? {}, "fileType", "").toLowerCase();
@@ -1380,7 +1381,7 @@ function DocumentPreviewModal({ documentPreview, requestId, documentId }: { docu
         <div className="grid min-h-0 flex-1 gap-0 lg:grid-cols-[280px_minmax(0,1fr)]">
           <aside className="border-b border-admin-border bg-admin-bg p-6 lg:border-b-0 lg:border-r">
             <dl className="grid gap-4">
-              <DetailRow label="Document ID" value={fieldText(documentPreview ?? {}, "documentId", documentId)} />
+              <DetailRow label="Document ID" value={documentReference} />
               <DetailRow label="Type" value={labelFromApiValue(fieldText(documentPreview ?? {}, "requestType", fieldText(documentPreview ?? {}, "fileType")))} />
               <DetailRow label="Status" value={labelFromApiValue(fieldText(documentPreview ?? {}, "verificationStatus"))} />
               <DetailRow label="Uploaded" value={fieldDate(documentPreview ?? {}, "uploadDate")} />

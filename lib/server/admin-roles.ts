@@ -107,6 +107,20 @@ export async function getAdminRoleUsers(token: string): Promise<AdminRoleUser[] 
   } catch { return null; }
 }
 
+export type AdminRoleUserDetail = AdminRoleUser & { phone: string | null };
+
+// GET /admin/roles/users/:id — administrator detail drawer (RP-06). Null on 404/403/network failure.
+export async function getAdminRoleUser(token: string, userId: string): Promise<AdminRoleUserDetail | null> {
+  try {
+    const response = await fetch(backendUrl() + "/admin/roles/users/" + encodeURIComponent(userId), { headers: { Authorization: "Bearer " + token }, cache: "no-store" });
+    if (!response.ok) return null;
+    const payload = envelopeData(await readJson(response));
+    const user = normalizeRoleUser(payload);
+    if (!user || !isRecord(payload)) return null;
+    return { ...user, phone: stringValue(payload.phone) };
+  } catch { return null; }
+}
+
 export async function updateAdminRoleUser(token: string, userId: string, input: { adminRole?: string; adminPermissions?: string[] }): Promise<boolean> {
   try {
     const response = await fetch(backendUrl() + "/admin/roles/users/" + encodeURIComponent(userId), { method: "PATCH", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify(input), cache: "no-store" });

@@ -66,6 +66,7 @@ export type AdminUserRow = {
   dateJoined: string;
   lastActivityLabel: string;
   allowedActions: string[];
+  tracmedyPatientId: string | null;
 };
 
 export type AdminUsersList = {
@@ -546,6 +547,8 @@ function normalizeAdminUserRow(value: unknown): AdminUserRow | null {
     dateJoined,
     lastActivityLabel,
     allowedActions: stringArrayValue(value.allowedActions),
+    // Not yet on AdminUserRowDto; read it if the backend adds it so the page can skip per-row detail calls.
+    tracmedyPatientId: nullableStringValue(value.tracmedyPatientId),
   };
 }
 
@@ -632,6 +635,35 @@ export async function getAdminUserDetail(token: string, userId: string): Promise
     return normalizeAdminUserDetail(payload);
   } catch {
     return null;
+  }
+}
+
+export type AdminUserProfileUpdate = { name?: string; email?: string; phone?: string };
+export type AdminUserProfileUpdateResult =
+  | { ok: true; detail: AdminUserDetail | null }
+  | { ok: false; status: number; message: string | null };
+
+// PATCH /admin/users/:id — USER-03 profile edit (name/email/phone). Changing email or phone
+// resets that verification flag and re-sends an OTP to the new destination (backend behaviour).
+export async function updateAdminUserProfile(token: string, userId: string, input: AdminUserProfileUpdate): Promise<AdminUserProfileUpdateResult> {
+  try {
+    const response = await fetch(backendUrl() + "/admin/users/" + encodeURIComponent(userId), {
+      method: "PATCH",
+      headers: {
+        Authorization: "Bearer " + token,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(input),
+      cache: "no-store",
+    });
+    const payload = await readJson(response);
+    if (!response.ok) {
+      const message = isRecord(payload) ? payload.message : null;
+      return { ok: false, status: response.status, message: typeof message === "string" ? message : Array.isArray(message) ? message.filter((item): item is string => typeof item === "string").join(" ") || null : null };
+    }
+    return { ok: true, detail: normalizeAdminUserDetail(envelopeData(payload)) };
+  } catch {
+    return { ok: false, status: 0, message: null };
   }
 }
 
